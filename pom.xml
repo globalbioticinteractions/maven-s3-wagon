@@ -36,6 +36,7 @@
 		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 		<slf4j.version>1.7.5</slf4j.version>
 		<aws.version>1.11.16</aws.version>
+		<!--<aws.version>1.11.788</aws.version>-->
 		<kuali-s3.version>1.0.1</kuali-s3.version>
 		<junit.version>4.11</junit.version>
 		<guava.version>15.0</guava.version>
@@ -81,11 +82,11 @@
 			<artifactId>guava</artifactId>
 			<version>${guava.version}</version>
 		</dependency>
-		<dependency>
-			<groupId>org.kuali.common</groupId>
-			<artifactId>kuali-s3</artifactId>
-			<version>${kuali-s3.version}</version>
-		</dependency>
+		<!--<dependency>-->
+			<!--<groupId>org.kuali.common</groupId>-->
+			<!--<artifactId>kuali-s3</artifactId>-->
+			<!--<version>${kuali-s3.version}</version>-->
+		<!--</dependency>-->
 		<dependency>
 			<groupId>com.amazonaws</groupId>
 			<artifactId>aws-java-sdk-s3</artifactId>
