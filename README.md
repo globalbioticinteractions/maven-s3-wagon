@@ -61,6 +61,22 @@ Add server entries in maven's ```settings.xml```
       </server>
     </servers>
 ```
+When using non-AWS s3 endpoints (e.g., using https://min.io), please add your own endpoint like:
+
+```
+    <servers>
+      <server>
+        <id>[repository id]</id>
+        <username>[AWS Access Key ID]</username>
+        <password>[AWS Secret Access Key]</password>
+        <configuration>
+          <endpoint>https://s3.example.org
+        </configuration>
+      </server>
+    </servers>
+```
+
+
 
 
 And setup one of the supported authentication techniques (see below)
