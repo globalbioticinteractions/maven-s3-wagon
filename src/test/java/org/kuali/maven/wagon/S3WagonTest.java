@@ -50,7 +50,7 @@ import static org.junit.Assert.fail;
 
 public class S3WagonTest {
 
-    private static final String testBucketName = "maven-s3-wagon-" + UUID.randomUUID();
+    private static final String testBucketName = "maven-s3-wagon-test-" + UUID.randomUUID();
 
     @BeforeClass
     public static void createTestBucket() {
