@@ -26,7 +26,7 @@ import com.google.common.base.Optional;
 public final class AuthenticationInfoCredentialsProvider implements AWSCredentialsProvider {
 
 	public AuthenticationInfoCredentialsProvider(Optional<AuthenticationInfo> auth) {
-		if (auth == null) {
+		if (auth.isPresent()) {
 			throw new IllegalArgumentException("auth must not be null");
 		}
 		this.auth = auth;
@@ -50,15 +50,13 @@ public final class AuthenticationInfoCredentialsProvider implements AWSCredentia
 		// no-op
 	}
 
-	protected String getAuthenticationErrorMessage() {
-		StringBuffer sb = new StringBuffer();
-		sb.append("The S3 wagon needs AWS Access Key set as the username and AWS Secret Key set as the password. eg:\n");
-		sb.append("<server>\n");
-		sb.append("  <id>my.server</id>\n");
-		sb.append("  <username>[AWS Access Key ID]</username>\n");
-		sb.append("  <password>[AWS Secret Access Key]</password>\n");
-		sb.append("</server>\n");
-		return sb.toString();
+	public static String getAuthenticationErrorMessage() {
+		return "The S3 wagon needs AWS Access Key set as the username and AWS Secret Key set as the password. eg:\n" +
+				"<server>\n" +
+				"  <id>my.server</id>\n" +
+				"  <username>[AWS Access Key ID]</username>\n" +
+				"  <password>[AWS Secret Access Key]</password>\n" +
+				"</server>\n";
 	}
 
 }

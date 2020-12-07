@@ -31,6 +31,7 @@ public class UploadFilenamesWithSpacesTest {
 
 	// private static final Logger log = LoggerFactory.getLogger(S3WagonTest.class);
 
+	@Ignore
 	@Test
 	public void spaces() {
 		try {
