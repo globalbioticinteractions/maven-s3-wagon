@@ -95,10 +95,6 @@ public class S3Wagon extends AbstractWagon implements RequestFactory {
         this.bucketName = bucketName;
     }
 
-    public String getBaseDir() {
-        return baseDir;
-    }
-
     public void setBaseDir(String baseDir) {
         this.baseDir = baseDir;
     }
@@ -173,13 +169,13 @@ public class S3Wagon extends AbstractWagon implements RequestFactory {
                 .build();
 
         this.bucketName = source.getHost();
-        this.baseDir = getBaseDir(source);
+        this.baseDir = getRepositoryBaseDir(source);
     }
 
     @Override
     protected boolean doesRemoteResourceExist(final String resourceName) {
         try {
-            client.getObjectMetadata(bucketName, baseDir + resourceName);
+            client.getObjectMetadata(bucketName, getBaseDir() + resourceName);
         } catch (AmazonClientException e) {
             return false;
         }
@@ -402,10 +398,6 @@ public class S3Wagon extends AbstractWagon implements RequestFactory {
         S3Utils.getInstance().upload(source, request, client, transferManager);
     }
 
-    protected String getDestinationPath(final String destination) {
-        return destination.substring(0, destination.lastIndexOf('/'));
-    }
-
     /**
      * Convert "/" -&gt; ""<br>
      * Convert "/snapshot/" &gt; "snapshot/"<br>
@@ -414,7 +406,7 @@ public class S3Wagon extends AbstractWagon implements RequestFactory {
      * @param source Repository info.
      * @return Normalized repository base dir.
      */
-    String getBaseDir(final Repository source) {
+     public static String getRepositoryBaseDir(final Repository source) {
         StringBuilder sb = new StringBuilder(source.getBasedir());
         sb.deleteCharAt(0);
         if (sb.length() == 0) {
@@ -426,13 +418,13 @@ public class S3Wagon extends AbstractWagon implements RequestFactory {
         return sb.toString();
     }
 
+    public String getBaseDir() {
+        return baseDir;
+    }
+
     @Override
     protected PutFileContext getPutFileContext(File source, String destination) {
-        PutFileContext context = super.getPutFileContext(source, destination);
-        context.setFactory(this);
-        context.setTransferManager(this.transferManager);
-        context.setClient(this.client);
-        return context;
+        return super.getPutFileContext(source, destination);
     }
 
     public int getReadTimeout() {
