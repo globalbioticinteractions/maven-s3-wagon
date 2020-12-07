@@ -55,11 +55,6 @@ public class S3Utils {
         return new BasicAWSCredentials(accessKey, secretKey);
     }
 
-    public AmazonS3Client getClient(String accessKey, String secretKey) {
-        AWSCredentials credentials = getCredentials(accessKey, secretKey);
-        return new AmazonS3Client(credentials);
-    }
-
     /**
      * Upload a single file to Amazon S3. If the file is larger than <code>MULTI_PART_UPLOAD_THRESHOLD</code> a multi-part upload is used.
      * Multi-part uploads split the file into several smaller chunks with each chunk being uploaded in a different thread. Once all the

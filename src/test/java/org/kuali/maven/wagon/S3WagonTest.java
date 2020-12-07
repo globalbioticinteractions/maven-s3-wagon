@@ -45,21 +45,22 @@ public class S3WagonTest {
 
     @Test
     public void customEndpoint() throws ConnectionException, AuthenticationException {
-        AuthenticationInfo auth = new AuthenticationInfo();
-        auth.setUserName("Q3AM3UQ867SPQQA43P2F");
-        auth.setPassword("zuf+tfteSlswRu7BJ86wekitnifILbZam1KYY3TG");
+        AuthenticationInfo auth = getMinioTestAuth();
         Repository repository = new Repository("minio.play", "s3://globi/");
+        S3Wagon wagon = getS3WagonForMinioTestEndpoint();
+        wagon.connect(repository, auth);
+    }
+
+    private S3Wagon getS3WagonForMinioTestEndpoint() {
         S3Wagon wagon = new S3Wagon();
         wagon.setEndpoint("play.min.io");
-        wagon.connect(repository, auth);
+        return wagon;
     }
 
     @Test
     public void putGetList() throws WagonException, URISyntaxException {
-        AuthenticationInfo auth = new AuthenticationInfo();
-        auth.setUserName("Q3AM3UQ867SPQQA43P2F");
-        auth.setPassword("zuf+tfteSlswRu7BJ86wekitnifILbZam1KYY3TG");
-        Repository repository = new Repository("minio.play", "s3://rkbucket/");
+        AuthenticationInfo auth = getMinioTestAuth();
+        Repository repository = new Repository("minio.play", "s3://globi/");
         Properties parameters = new Properties();
         repository.setParameters(parameters);
         Wagon wagon = new S3Wagon();
@@ -87,6 +88,13 @@ public class S3WagonTest {
         List<String> fileList = wagon.getFileList("/integration-test");
         assertThat(fileList, hasItem(uploadPath));
 
+    }
+
+    private AuthenticationInfo getMinioTestAuth() {
+        AuthenticationInfo auth = new AuthenticationInfo();
+        auth.setUserName("Q3AM3UQ867SPQQA43P2F");
+        auth.setPassword("zuf+tfteSlswRu7BJ86wekitnifILbZam1KYY3TG");
+        return auth;
     }
 
 }

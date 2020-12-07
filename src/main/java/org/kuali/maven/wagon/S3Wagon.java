@@ -1,4 +1,4 @@
-/**
+/*
  * Copyright 2010-2015 The Kuali Foundation
  * <p>
  * Licensed under the Educational Community License, Version 2.0 (the "License");
@@ -18,17 +18,13 @@ package org.kuali.maven.wagon;
 import com.amazonaws.AmazonClientException;
 import com.amazonaws.AmazonServiceException;
 import com.amazonaws.ClientConfiguration;
-import com.amazonaws.Protocol;
 import com.amazonaws.auth.AWSCredentials;
-import com.amazonaws.auth.AWSCredentialsProviderChain;
-import com.amazonaws.auth.AWSSessionCredentials;
 import com.amazonaws.auth.AWSStaticCredentialsProvider;
 import com.amazonaws.client.builder.AwsClientBuilder;
 import com.amazonaws.internal.ResettableInputStream;
 import com.amazonaws.services.s3.AmazonS3Client;
 import com.amazonaws.services.s3.AmazonS3ClientBuilder;
 import com.amazonaws.services.s3.internal.Mimetypes;
-import com.amazonaws.services.s3.model.CannedAccessControlList;
 import com.amazonaws.services.s3.model.ListObjectsRequest;
 import com.amazonaws.services.s3.model.ObjectListing;
 import com.amazonaws.services.s3.model.ObjectMetadata;
@@ -37,7 +33,6 @@ import com.amazonaws.services.s3.model.S3Object;
 import com.amazonaws.services.s3.model.S3ObjectSummary;
 import com.amazonaws.services.s3.transfer.TransferManager;
 import com.amazonaws.services.s3.transfer.TransferManagerBuilder;
-import com.google.common.base.Optional;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang.StringUtils;
 import org.apache.maven.wagon.ResourceDoesNotExistException;
@@ -46,14 +41,7 @@ import org.apache.maven.wagon.authentication.AuthenticationInfo;
 import org.apache.maven.wagon.proxy.ProxyInfo;
 import org.apache.maven.wagon.repository.Repository;
 import org.kuali.common.aws.s3.S3Utils;
-import org.kuali.common.aws.s3.SimpleFormatter;
-import org.kuali.common.threads.ExecutionStatistics;
-import org.kuali.common.threads.ThreadHandlerContext;
-import org.kuali.common.threads.ThreadInvoker;
-import org.kuali.common.threads.listener.PercentCompleteListener;
 import org.kuali.maven.wagon.auth.AwsCredentials;
-import org.kuali.maven.wagon.auth.AwsSessionCredentials;
-import org.kuali.maven.wagon.auth.MavenAwsCredentialsProviderChain;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -90,33 +78,35 @@ public class S3Wagon extends AbstractWagon implements RequestFactory {
     /**
      * Set the system property <code>maven.wagon.protocol</code> to <code>http</code> to force the wagon to communicate over <code>http</code>. Default is <code>https</code>.
      */
-    public static final String PROTOCOL_KEY = "maven.wagon.protocol";
-    public static final String HTTP = "http";
-    public static final String HTTPS = "https";
-    public static final String MIN_THREADS_KEY = "maven.wagon.threads.min";
-    public static final String MAX_THREADS_KEY = "maven.wagon.threads.max";
-    public static final String DIVISOR_KEY = "maven.wagon.threads.divisor";
-    public static final int DEFAULT_MIN_THREAD_COUNT = 10;
-    public static final int DEFAULT_MAX_THREAD_COUNT = 50;
-    public static final int DEFAULT_DIVISOR = 50;
     public static final int DEFAULT_READ_TIMEOUT = 60 * 1000;
     private static final File TEMP_DIR = getCanonicalFile(System.getProperty("java.io.tmpdir"));
     private static final String TEMP_DIR_PATH = TEMP_DIR.getAbsolutePath();
 
-    ThreadInvoker invoker = new ThreadInvoker();
-    SimpleFormatter formatter = new SimpleFormatter();
-    int minThreads = getMinThreads();
-    int maxThreads = getMaxThreads();
-    int divisor = getDivisor();
-    int readTimeout = DEFAULT_READ_TIMEOUT;
-    CannedAccessControlList acl = null;
-    TransferManager transferManager;
+    private int readTimeout = DEFAULT_READ_TIMEOUT;
+    private TransferManager transferManager;
 
     private static final Logger log = LoggerFactory.getLogger(S3Wagon.class);
 
-    AmazonS3Client client;
-    String bucketName;
-    String basedir;
+    private AmazonS3Client client;
+
+    public String getBucketName() {
+        return bucketName;
+    }
+
+    public void setBucketName(String bucketName) {
+        this.bucketName = bucketName;
+    }
+
+    public String getBaseDir() {
+        return baseDir;
+    }
+
+    public void setBaseDir(String baseDir) {
+        this.baseDir = baseDir;
+    }
+
+    private String bucketName;
+    private String baseDir;
 
     public String getEndpoint() {
         return endpoint;
@@ -180,13 +170,13 @@ public class S3Wagon extends AbstractWagon implements RequestFactory {
                 .build();
 
         this.bucketName = source.getHost();
-        this.basedir = getBaseDir(source);
+        this.baseDir = getBaseDir(source);
     }
 
     @Override
     protected boolean doesRemoteResourceExist(final String resourceName) {
         try {
-            client.getObjectMetadata(bucketName, basedir + resourceName);
+            client.getObjectMetadata(bucketName, baseDir + resourceName);
         } catch (AmazonClientException e) {
             return false;
         }
@@ -206,7 +196,7 @@ public class S3Wagon extends AbstractWagon implements RequestFactory {
         // Obtain the object from S3
         S3Object object;
         try {
-            String key = basedir + resourceName;
+            String key = baseDir + resourceName;
             object = client.getObject(bucketName, key);
         } catch (Exception e) {
             throw new ResourceDoesNotExistException("Resource " + resourceName + " does not exist in the repository", e);
@@ -237,7 +227,7 @@ public class S3Wagon extends AbstractWagon implements RequestFactory {
      */
     @Override
     protected boolean isRemoteResourceNewer(final String resourceName, final long timestamp) {
-        ObjectMetadata metadata = client.getObjectMetadata(bucketName, basedir + resourceName);
+        ObjectMetadata metadata = client.getObjectMetadata(bucketName, baseDir + resourceName);
         return metadata.getLastModified().compareTo(new Date(timestamp)) < 0;
     }
 
@@ -251,7 +241,7 @@ public class S3Wagon extends AbstractWagon implements RequestFactory {
             directory = "";
         }
         String delimiter = "/";
-        String prefix = basedir + directory;
+        String prefix = baseDir + directory;
         if (!prefix.endsWith(delimiter)) {
             prefix += delimiter;
         }
@@ -268,7 +258,7 @@ public class S3Wagon extends AbstractWagon implements RequestFactory {
         for (S3ObjectSummary summary : objectListing.getObjectSummaries()) {
             // info("summary.getKey()=" + summary.getKey());
             String key = summary.getKey();
-            String relativeKey = key.startsWith(basedir) ? key.substring(basedir.length()) : key;
+            String relativeKey = key.startsWith(baseDir) ? key.substring(baseDir.length()) : key;
             boolean add = !StringUtils.isBlank(relativeKey) && !relativeKey.equals(directory);
             if (add) {
                 // info("Adding key - " + relativeKey);
@@ -276,7 +266,7 @@ public class S3Wagon extends AbstractWagon implements RequestFactory {
             }
         }
         for (String commonPrefix : objectListing.getCommonPrefixes()) {
-            String value = commonPrefix.startsWith(basedir) ? commonPrefix.substring(basedir.length()) : commonPrefix;
+            String value = commonPrefix.startsWith(baseDir) ? commonPrefix.substring(baseDir.length()) : commonPrefix;
             // info("commonPrefix=" + commonPrefix);
             // info("relativeValue=" + relativeValue);
             // info("Adding common prefix - " + value);
@@ -301,7 +291,7 @@ public class S3Wagon extends AbstractWagon implements RequestFactory {
      */
     protected String getCanonicalKey(String key) {
         // release/./css/style.css
-        String path = basedir + key;
+        String path = baseDir + key;
 
         // /temp/release/css/style.css
         File file = getCanonicalFile(new File(TEMP_DIR, path));
@@ -389,67 +379,11 @@ public class S3Wagon extends AbstractWagon implements RequestFactory {
         // Examine the contents of the directory
         List<PutFileContext> contexts = getPutFileContexts(sourceDir, destinationDir);
         for (PutFileContext context : contexts) {
-            // Progress is tracked by the thread handler when uploading files this way
-            context.setProgress(null);
+            PutObjectRequest request = getPutObjectRequest(context);
+            // Upload the file to S3, using multi-part upload for large files
+            S3Utils.getInstance().upload(context.source, request, client, transferManager);
         }
 
-        // Sum the total bytes in the directory
-        long bytes = sum(contexts);
-
-        // Show what we are up to
-        log.info(getUploadStartMsg(contexts.size(), bytes));
-
-        // Store some context for the thread handler
-        ThreadHandlerContext<PutFileContext> thc = new ThreadHandlerContext<PutFileContext>();
-        thc.setList(contexts);
-        thc.setHandler(new FileHandler());
-        thc.setMax(maxThreads);
-        thc.setMin(minThreads);
-        thc.setDivisor(divisor);
-        thc.setListener(new PercentCompleteListener<PutFileContext>());
-
-        // Invoke the threads
-        ExecutionStatistics stats = invoker.invokeThreads(thc);
-
-        // Show some stats
-        long millis = stats.getExecutionTime();
-        long count = stats.getIterationCount();
-        log.info(getUploadCompleteMsg(millis, bytes, count));
-    }
-
-    protected String getUploadCompleteMsg(long millis, long bytes, long count) {
-        String rate = formatter.getRate(millis, bytes);
-        String time = formatter.getTime(millis);
-        StringBuilder sb = new StringBuilder();
-        sb.append("Files: " + count);
-        sb.append("  Time: " + time);
-        sb.append("  Rate: " + rate);
-        return sb.toString();
-    }
-
-    protected String getUploadStartMsg(int fileCount, long bytes) {
-        StringBuilder sb = new StringBuilder();
-        sb.append("Files: " + fileCount);
-        sb.append("  Bytes: " + formatter.getSize(bytes));
-        return sb.toString();
-    }
-
-    protected int getRequestsPerThread(int threads, int requests) {
-        int requestsPerThread = requests / threads;
-        while (requestsPerThread * threads < requests) {
-            requestsPerThread++;
-        }
-        return requestsPerThread;
-    }
-
-    protected long sum(List<PutFileContext> contexts) {
-        long sum = 0;
-        for (PutFileContext context : contexts) {
-            File file = context.getSource();
-            long length = file.length();
-            sum += length;
-        }
-        return sum;
     }
 
     /**
@@ -477,7 +411,7 @@ public class S3Wagon extends AbstractWagon implements RequestFactory {
      * @param source Repository info.
      * @return Normalized repository base dir.
      */
-    protected String getBaseDir(final Repository source) {
+    String getBaseDir(final Repository source) {
         StringBuilder sb = new StringBuilder(source.getBasedir());
         sb.deleteCharAt(0);
         if (sb.length() == 0) {
@@ -489,24 +423,6 @@ public class S3Wagon extends AbstractWagon implements RequestFactory {
         return sb.toString();
     }
 
-    /**
-     * Create AWSCredentionals from the information in system properties, environment variables, settings.xml, or EC2 instance metadata (only applicable when running the wagon on
-     * an Amazon EC2 instance)
-     *
-     * @param authenticationInfo Authentication credentials from Maven settings.
-     * @return Resolved AWS Credentials.
-     */
-    protected AWSCredentials getCredentials(final AuthenticationInfo authenticationInfo) {
-        Optional<AuthenticationInfo> auth = Optional.fromNullable(authenticationInfo);
-        AWSCredentialsProviderChain chain = new MavenAwsCredentialsProviderChain(auth);
-        AWSCredentials credentials = chain.getCredentials();
-        if (credentials instanceof AWSSessionCredentials) {
-            return new AwsSessionCredentials((AWSSessionCredentials) credentials);
-        } else {
-            return new AwsCredentials(credentials);
-        }
-    }
-
     @Override
     protected PutFileContext getPutFileContext(File source, String destination) {
         PutFileContext context = super.getPutFileContext(source, destination);
@@ -514,36 +430,6 @@ public class S3Wagon extends AbstractWagon implements RequestFactory {
         context.setTransferManager(this.transferManager);
         context.setClient(this.client);
         return context;
-    }
-
-    protected int getMinThreads() {
-        return getValue(MIN_THREADS_KEY, DEFAULT_MIN_THREAD_COUNT);
-    }
-
-    protected int getMaxThreads() {
-        return getValue(MAX_THREADS_KEY, DEFAULT_MAX_THREAD_COUNT);
-    }
-
-    protected int getDivisor() {
-        return getValue(DIVISOR_KEY, DEFAULT_DIVISOR);
-    }
-
-    protected int getValue(String key, int defaultValue) {
-        String value = System.getProperty(key);
-        if (StringUtils.isEmpty(value)) {
-            return defaultValue;
-        } else {
-            return new Integer(value);
-        }
-    }
-
-    protected String getValue(String key, String defaultValue) {
-        String value = System.getProperty(key);
-        if (StringUtils.isEmpty(value)) {
-            return defaultValue;
-        } else {
-            return value;
-        }
     }
 
     public int getReadTimeout() {

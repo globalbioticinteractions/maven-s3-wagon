@@ -37,8 +37,8 @@ public class UploadFilenamesWithSpacesTest {
 		try {
 			Repository repository = new Repository("kuali.external", "s3://maven.kuali.org/external");
 			S3Wagon wagon = new S3Wagon();
-			wagon.basedir = wagon.getBaseDir(repository);
-			wagon.bucketName = "maven.kuali.org";
+			wagon.setBaseDir(wagon.getBaseDir(repository));
+			wagon.setBucketName("maven.kuali.org");
 			String filename = "/Users/jcaddel/ws/kuali-spaces/src/site/resources/myimages/icon with spaces.png";
 			File file = new File(filename);
 			PutObjectRequest request = wagon.getPutObjectRequest(file, "myimages/icon with spaces.png", null);
