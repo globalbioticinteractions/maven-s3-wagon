@@ -20,6 +20,7 @@ import com.amazonaws.AmazonServiceException;
 import com.amazonaws.ClientConfiguration;
 import com.amazonaws.auth.AWSCredentials;
 import com.amazonaws.auth.AWSStaticCredentialsProvider;
+import com.amazonaws.auth.BasicAWSCredentials;
 import com.amazonaws.client.builder.AwsClientBuilder;
 import com.amazonaws.internal.ResettableInputStream;
 import com.amazonaws.services.s3.AmazonS3Client;
@@ -41,7 +42,6 @@ import org.apache.maven.wagon.authentication.AuthenticationInfo;
 import org.apache.maven.wagon.proxy.ProxyInfo;
 import org.apache.maven.wagon.repository.Repository;
 import org.kuali.common.aws.s3.S3Utils;
-import org.kuali.maven.wagon.auth.AwsCredentials;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -53,8 +53,6 @@ import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
-
-import static org.kuali.maven.wagon.auth.AuthenticationInfoCredentialsProvider.getAuthenticationErrorMessage;
 
 /**
  * <p>
@@ -155,10 +153,15 @@ public class S3Wagon extends AbstractWagon implements RequestFactory {
         if (auth == null
                 || StringUtils.isBlank(auth.getPassword())
                 || StringUtils.isBlank(auth.getUserName())) {
-            throw new IllegalStateException(getAuthenticationErrorMessage());
+            throw new IllegalStateException("The S3 wagon needs AWS Access Key set as the username and AWS Secret Key set as the password. eg:\n" +
+                    "<server>\n" +
+                    "  <id>my.server</id>\n" +
+                    "  <username>[AWS Access Key ID]</username>\n" +
+                    "  <password>[AWS Secret Access Key]</password>\n" +
+                    "</server>\n");
         }
 
-        AwsCredentials credentials = new AwsCredentials(
+        AWSCredentials credentials = new BasicAWSCredentials(
                 auth.getUserName(),
                 auth.getPassword()
         );
@@ -381,7 +384,7 @@ public class S3Wagon extends AbstractWagon implements RequestFactory {
         for (PutFileContext context : contexts) {
             PutObjectRequest request = getPutObjectRequest(context);
             // Upload the file to S3, using multi-part upload for large files
-            S3Utils.getInstance().upload(context.source, request, client, transferManager);
+            S3Utils.getInstance().upload(context.getSource(), request, client, transferManager);
         }
 
     }

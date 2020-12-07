@@ -29,7 +29,7 @@ public enum Size {
     private String sizeLabel;
     private String rateLabel;
 
-    private Size(long value, String sizeLabel, String rateLabel) {
+    Size(long value, String sizeLabel, String rateLabel) {
         this.value = value;
         this.sizeLabel = sizeLabel;
         this.rateLabel = rateLabel;

@@ -24,23 +24,21 @@
     <name>Maven S3 Wagon</name>
     <inceptionYear>2010</inceptionYear>
     <description>
-        This project is an implementation of a multi-threaded Wagon provider for accessing Amazon's Simple Storage
+        This project is an implementation of a Wagon provider for accessing Amazon's Simple Storage
         Service (S3).
-        It enables Maven to download files from and deploy files to S3.
+        It enables Maven to download files from and deploy files to services supporting a S3 api.
         It draws heavily from code developed by Sean Hennessy, Jeff Caddel at Kuali and Ben Hale at SpringSource
     </description>
     <url>https://github.com/globalbioticinteractions/maven-s3-wagon</url>
     <properties>
         <project.scm.vendor>git</project.scm.vendor>
-        <project.java.version>1.6</project.java.version>
-        <maven.compiler.source>1.6</maven.compiler.source>
-        <maven.compiler.target>1.6</maven.compiler.target>
+        <project.java.version>1.8</project.java.version>
+        <maven.compiler.source>1.8</maven.compiler.source>
+        <maven.compiler.target>1.8</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <slf4j.version>1.7.5</slf4j.version>
         <aws.version>1.11.913</aws.version>
-        <junit.version>4.11</junit.version>
-        <guava.version>15.0</guava.version>
-        <jaxb.version>2.3.2</jaxb.version>
+        <slf4j.version>1.7.5</slf4j.version>
+        <junit.version>4.13.1</junit.version>
     </properties>
     <build>
         <plugins>

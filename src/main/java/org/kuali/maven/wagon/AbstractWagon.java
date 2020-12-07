@@ -281,9 +281,7 @@ public abstract class AbstractWagon implements Wagon {
 	public final boolean resourceExists(final String resourceName) throws TransferFailedException, AuthorizationException {
 		try {
 			return doesRemoteResourceExist(resourceName);
-		} catch (TransferFailedException e) {
-			throw e;
-		} catch (AuthorizationException e) {
+		} catch (TransferFailedException | AuthorizationException e) {
 			throw e;
 		} catch (Exception e) {
 			sessionListeners.fireSessionError(e);

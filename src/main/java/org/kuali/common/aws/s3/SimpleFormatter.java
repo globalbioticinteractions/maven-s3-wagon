@@ -182,35 +182,4 @@ public class SimpleFormatter {
         }
     }
 
-    public NumberFormat getLargeSizeFormatter() {
-        return largeSizeFormatter;
-    }
-
-    public void setLargeSizeFormatter(NumberFormat sizeFormatter) {
-        this.largeSizeFormatter = sizeFormatter;
-    }
-
-    public NumberFormat getTimeFormatter() {
-        return timeFormatter;
-    }
-
-    public void setTimeFormatter(NumberFormat timeFormatter) {
-        this.timeFormatter = timeFormatter;
-    }
-
-    public NumberFormat getRateFormatter() {
-        return rateFormatter;
-    }
-
-    public void setRateFormatter(NumberFormat rateFormatter) {
-        this.rateFormatter = rateFormatter;
-    }
-
-    public NumberFormat getSizeFormatter() {
-        return sizeFormatter;
-    }
-
-    public void setSizeFormatter(NumberFormat smallSizeFormatter) {
-        this.sizeFormatter = smallSizeFormatter;
-    }
 }
