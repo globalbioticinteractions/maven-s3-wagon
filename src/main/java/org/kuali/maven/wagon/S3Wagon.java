@@ -121,6 +121,13 @@ public class S3Wagon extends AbstractWagon implements RequestFactory {
         super.addTransferListener(listener);
     }
 
+    protected AmazonS3Client getAmazonS3Client(final AuthenticationInfo credentials) {
+        return getAmazonS3Client(new BasicAWSCredentials(
+                credentials.getUserName(),
+                credentials.getPassword()
+        ));
+    }
+
     protected AmazonS3Client getAmazonS3Client(final AWSCredentials credentials) {
         AmazonS3ClientBuilder builder = AmazonS3ClientBuilder
                 .standard()
@@ -157,12 +164,7 @@ public class S3Wagon extends AbstractWagon implements RequestFactory {
                     "</server>\n");
         }
 
-        AWSCredentials credentials = new BasicAWSCredentials(
-                auth.getUserName(),
-                auth.getPassword()
-        );
-
-        this.client = getAmazonS3Client(credentials);
+        this.client = getAmazonS3Client(auth);
         this.transferManager = TransferManagerBuilder
                 .standard()
                 .withS3Client(this.client)
@@ -175,7 +177,7 @@ public class S3Wagon extends AbstractWagon implements RequestFactory {
     @Override
     protected boolean doesRemoteResourceExist(final String resourceName) {
         try {
-            client.getObjectMetadata(bucketName, getBaseDir() + resourceName);
+            client.getObjectMetadata(getBucketName(), getBaseDir() + resourceName);
         } catch (AmazonClientException e) {
             return false;
         }
@@ -196,7 +198,7 @@ public class S3Wagon extends AbstractWagon implements RequestFactory {
         S3Object object;
         try {
             String key = baseDir + resourceName;
-            object = client.getObject(bucketName, key);
+            object = client.getObject(getBucketName(), key);
         } catch (Exception e) {
             throw new ResourceDoesNotExistException("Resource " + resourceName + " does not exist in the repository", e);
         }
@@ -226,7 +228,7 @@ public class S3Wagon extends AbstractWagon implements RequestFactory {
      */
     @Override
     protected boolean isRemoteResourceNewer(final String resourceName, final long timestamp) {
-        ObjectMetadata metadata = client.getObjectMetadata(bucketName, baseDir + resourceName);
+        ObjectMetadata metadata = client.getObjectMetadata(getBucketName(), baseDir + resourceName);
         return metadata.getLastModified().compareTo(new Date(timestamp)) < 0;
     }
 
