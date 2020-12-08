@@ -129,10 +129,7 @@ public abstract class AbstractWagon implements Wagon {
 		sessionListeners.fireSessionOpening();
 		try {
 			connectToRepository(source, authenticationInfo, proxyInfo);
-		} catch (ConnectionException e) {
-			sessionListeners.fireSessionConnectionRefused();
-			throw e;
-		} catch (AuthenticationException e) {
+		} catch (ConnectionException | AuthenticationException e) {
 			sessionListeners.fireSessionConnectionRefused();
 			throw e;
 		} catch (Exception e) {
@@ -170,11 +167,7 @@ public abstract class AbstractWagon implements Wagon {
 		try {
 			getResource(resourceName, destination, new TransferProgress(resource, TransferEvent.REQUEST_GET, transferListeners));
 			transferListeners.fireTransferCompleted(resource, TransferEvent.REQUEST_GET);
-		} catch (TransferFailedException e) {
-			throw e;
-		} catch (ResourceDoesNotExistException e) {
-			throw e;
-		} catch (AuthorizationException e) {
+		} catch (TransferFailedException | AuthorizationException | ResourceDoesNotExistException e) {
 			throw e;
 		} catch (Exception e) {
 			transferListeners.fireTransferError(resource, TransferEvent.REQUEST_GET, e);
@@ -185,11 +178,7 @@ public abstract class AbstractWagon implements Wagon {
 	public final List<String> getFileList(final String destinationDirectory) throws TransferFailedException, ResourceDoesNotExistException, AuthorizationException {
 		try {
 			return listDirectory(destinationDirectory);
-		} catch (TransferFailedException e) {
-			throw e;
-		} catch (ResourceDoesNotExistException e) {
-			throw e;
-		} catch (AuthorizationException e) {
+		} catch (TransferFailedException | ResourceDoesNotExistException | AuthorizationException e) {
 			throw e;
 		} catch (Exception e) {
 			sessionListeners.fireSessionError(e);
@@ -207,11 +196,7 @@ public abstract class AbstractWagon implements Wagon {
 			} else {
 				return false;
 			}
-		} catch (TransferFailedException e) {
-			throw e;
-		} catch (ResourceDoesNotExistException e) {
-			throw e;
-		} catch (AuthorizationException e) {
+		} catch (TransferFailedException | ResourceDoesNotExistException | AuthorizationException e) {
 			throw e;
 		} catch (Exception e) {
 			transferListeners.fireTransferError(resource, TransferEvent.REQUEST_GET, e);
@@ -246,7 +231,7 @@ public abstract class AbstractWagon implements Wagon {
 		}
 	}
 
-	protected void handleException(Exception e, PutFileContext context) throws TransferFailedException, ResourceDoesNotExistException, AuthorizationException {
+	private void handleException(Exception e, PutFileContext context) throws TransferFailedException, ResourceDoesNotExistException, AuthorizationException {
 		if (e instanceof TransferFailedException) {
 			throw (TransferFailedException) e;
 		}
@@ -260,7 +245,7 @@ public abstract class AbstractWagon implements Wagon {
 		throw new TransferFailedException("Transfer of resource " + context.getDestination() + "failed", e);
 	}
 
-	protected List<PutFileContext> getPutFileContexts(File sourceDirectory, String destinationDirectory) {
+	List<PutFileContext> getPutFileContexts(File sourceDirectory, String destinationDirectory) {
 
 		List<PutFileContext> contexts = new ArrayList<PutFileContext>();
 
