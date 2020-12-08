@@ -1,12 +1,12 @@
 /**
  * Copyright 2010-2012 The Kuali Foundation
- *
+ * <p>
  * Licensed under the Educational Community License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- *
+ * <p>
  * http://www.opensource.org/licenses/ecl2.php
- *
+ * <p>
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -15,17 +15,13 @@
  */
 package org.kuali.common.aws.s3;
 
-import com.amazonaws.auth.AWSCredentials;
-import com.amazonaws.auth.BasicAWSCredentials;
-import com.amazonaws.services.s3.AmazonS3Client;
 import com.amazonaws.services.s3.model.AmazonS3Exception;
+import com.amazonaws.services.s3.model.ObjectMetadata;
 import com.amazonaws.services.s3.model.PutObjectRequest;
 import com.amazonaws.services.s3.transfer.TransferManager;
 import com.amazonaws.services.s3.transfer.Upload;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import java.io.File;
 
 /**
  * Utility methods related to Amazon S3
@@ -53,16 +49,8 @@ public class S3Utils {
      * Multi-part uploads split the file into several smaller chunks with each chunk being uploaded in a different thread. Once all the
      * threads have completed the file is automatically reassembled on S3 as a single file.
      */
-    public void upload(File file, PutObjectRequest request, AmazonS3Client client, TransferManager manager) {
-        // Store the file on S3
-        if (file.length() < MULTI_PART_UPLOAD_THRESHOLD) {
-            // Use normal upload for small files
-            client.putObject(request);
-        } else {
-            log.debug("Blocking multi-part upload: " + file.getAbsolutePath());
-            // Use multi-part upload for large files
-            blockingMultiPartUpload(request, manager);
-        }
+    public void upload(PutObjectRequest request, TransferManager manager) {
+        uploadMultipart(request, manager);
     }
 
     /**
@@ -73,9 +61,15 @@ public class S3Utils {
      * that particular thread was handling will have to be re-uploaded (instead of the entire file). A reasonable number of automatic
      * retries occurs if an individual upload thread fails before this method throws <code>AmazonS3Exception</code>
      */
-    public void blockingMultiPartUpload(PutObjectRequest request, TransferManager manager) {
+    private void uploadMultipart(PutObjectRequest request, TransferManager manager) {
         // Use multi-part upload for large files
-        Upload upload = manager.upload(request);
+        ObjectMetadata metadata = request.getMetadata();
+        Upload upload = manager.upload(
+                request.getBucketName(),
+                request.getKey(),
+                request.getInputStream(),
+                metadata);
+
         try {
             // Block and wait for the upload to finish
             upload.waitForCompletion();

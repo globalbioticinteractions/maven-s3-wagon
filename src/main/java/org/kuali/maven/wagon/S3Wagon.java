@@ -25,7 +25,6 @@ import com.amazonaws.client.builder.AwsClientBuilder;
 import com.amazonaws.internal.ResettableInputStream;
 import com.amazonaws.services.s3.AmazonS3Client;
 import com.amazonaws.services.s3.AmazonS3ClientBuilder;
-import com.amazonaws.services.s3.internal.Mimetypes;
 import com.amazonaws.services.s3.model.ListObjectsRequest;
 import com.amazonaws.services.s3.model.ObjectListing;
 import com.amazonaws.services.s3.model.ObjectMetadata;
@@ -112,8 +111,6 @@ public class S3Wagon extends AbstractWagon implements RequestFactory {
 
     private String endpoint = null;
 
-    private final Mimetypes mimeTypes = Mimetypes.getInstance();
-
     public S3Wagon() {
         super(true);
         S3Listener listener = new S3Listener();
@@ -165,13 +162,36 @@ public class S3Wagon extends AbstractWagon implements RequestFactory {
         }
 
         this.client = getAmazonS3Client(auth);
+        String multipartCopyPartSize = source.getParameter("multipartCopyPartSize");
+
+        // reduce default copy part size to increase friendliness to cloudflare and nginx
+        long multipartCopyPartSize1 = StringUtils.isBlank(multipartCopyPartSize)
+                ? 1024 * 1024 * 10L
+                : parseMultipartCopyPartSize(multipartCopyPartSize);
+
         this.transferManager = TransferManagerBuilder
                 .standard()
+                .withMultipartCopyPartSize(multipartCopyPartSize1)
                 .withS3Client(this.client)
                 .build();
 
         this.bucketName = source.getHost();
         this.baseDir = getRepositoryBaseDir(source);
+    }
+
+    private long parseMultipartCopyPartSize(String multipartCopyPartSize) {
+        try {
+            return Long.parseLong(multipartCopyPartSize);
+        } catch (NumberFormatException ex) {
+            throw new IllegalStateException("The multipartCopyPartSize of S3 wagon needs to be a integer/long. eg:\n" +
+                    "<server>\n" +
+                    "  <id>my.server</id>\n" +
+                    "  ...\n" +
+                    "  <configuration>\n" +
+                    "    <multipartCopyPartSize>10485760</multipartCopyPartSize>\n" +
+                    "  </configuration>\n" +
+                    "</server>\n", ex);
+        }
     }
 
     @Override
@@ -321,14 +341,9 @@ public class S3Wagon extends AbstractWagon implements RequestFactory {
         }
     }
 
-    protected ObjectMetadata getObjectMetadata(final File source, final String destination) {
-        // Set the mime type according to the extension of the destination file
-        String contentType = mimeTypes.getMimetype(destination);
-        long contentLength = source.length();
-
+    private ObjectMetadata getObjectMetadata(final File source) {
         ObjectMetadata omd = new ObjectMetadata();
-        omd.setContentLength(contentLength);
-        omd.setContentType(contentType);
+        omd.setContentLength(source.length());
         return omd;
     }
 
@@ -362,7 +377,7 @@ public class S3Wagon extends AbstractWagon implements RequestFactory {
         try {
             String key = getCanonicalKey(destination);
             InputStream input = getInputStream(source, progress);
-            ObjectMetadata metadata = getObjectMetadata(source, destination);
+            ObjectMetadata metadata = getObjectMetadata(source);
             return new PutObjectRequest(bucketName, key, input, metadata);
         } catch (FileNotFoundException e) {
             throw new AmazonServiceException("File not found", e);
@@ -382,7 +397,7 @@ public class S3Wagon extends AbstractWagon implements RequestFactory {
         for (PutFileContext context : contexts) {
             PutObjectRequest request = getPutObjectRequest(context);
             // Upload the file to S3, using multi-part upload for large files
-            S3Utils.getInstance().upload(context.getSource(), request, client, transferManager);
+            S3Utils.getInstance().upload(request, transferManager);
         }
 
     }
@@ -392,12 +407,11 @@ public class S3Wagon extends AbstractWagon implements RequestFactory {
      */
     @Override
     protected void putResource(final File source, final String destination, final TransferProgress progress) throws IOException {
-
         // Create a new PutObjectRequest
         PutObjectRequest request = getPutObjectRequest(source, destination, progress);
 
         // Upload the file to S3, using multi-part upload for large files
-        S3Utils.getInstance().upload(source, request, client, transferManager);
+        S3Utils.getInstance().upload(request, transferManager);
     }
 
     /**
@@ -408,7 +422,7 @@ public class S3Wagon extends AbstractWagon implements RequestFactory {
      * @param source Repository info.
      * @return Normalized repository base dir.
      */
-     public static String getRepositoryBaseDir(final Repository source) {
+    public static String getRepositoryBaseDir(final Repository source) {
         StringBuilder sb = new StringBuilder(source.getBasedir());
         sb.deleteCharAt(0);
         if (sb.length() == 0) {
