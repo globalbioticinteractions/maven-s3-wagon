@@ -397,7 +397,7 @@ public class S3Wagon extends AbstractWagon implements RequestFactory {
         for (PutFileContext context : contexts) {
             PutObjectRequest request = getPutObjectRequest(context);
             // Upload the file to S3, using multi-part upload for large files
-            S3Utils.getInstance().upload(request, transferManager);
+            S3Utils.upload(request, transferManager);
         }
 
     }
@@ -411,7 +411,7 @@ public class S3Wagon extends AbstractWagon implements RequestFactory {
         PutObjectRequest request = getPutObjectRequest(source, destination, progress);
 
         // Upload the file to S3, using multi-part upload for large files
-        S3Utils.getInstance().upload(request, transferManager);
+        S3Utils.upload(request, transferManager);
     }
 
     /**
