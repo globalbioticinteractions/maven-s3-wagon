@@ -70,7 +70,7 @@ When using non-AWS s3 endpoints (e.g., using https://min.io), please add your ow
         <username>[AWS Access Key ID]</username>
         <password>[AWS Secret Access Key]</password>
         <configuration>
-          <endpoint>https://s3.example.org
+          <endpoint>https://s3.example.org</endpoint>
         </configuration>
       </server>
     </servers>
