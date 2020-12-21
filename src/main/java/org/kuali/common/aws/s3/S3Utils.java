@@ -66,10 +66,7 @@ public class S3Utils {
 
                 @Override
                 public void progressChanged(ProgressEvent progressEvent) {
-                    ProgressEventType eventType = progressEvent.getEventType();
-                    if (eventType.isTransferEvent()) {
-                        log.info("[" + StringUtils.lowerCase(eventType.name()) + "]: [s3://" + request.getBucketName() + "/" + request.getKey() + "]");
-                    }
+
                 }
             });
             downloadRequest.waitForCompletion();
@@ -94,10 +91,7 @@ public class S3Utils {
 
             @Override
             public void progressChanged(ProgressEvent progressEvent) {
-                ProgressEventType eventType = progressEvent.getEventType();
-                if (eventType.isTransferEvent()) {
-                    log.info("[" + StringUtils.lowerCase(eventType.name()) + "]: [s3://" + request.getBucketName() + "/" + request.getKey() + "]");
-                }
+
             }
         });
         try {

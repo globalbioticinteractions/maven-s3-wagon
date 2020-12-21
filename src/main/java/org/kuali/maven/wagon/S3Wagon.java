@@ -147,18 +147,14 @@ public class S3Wagon implements Wagon {
     public final void get(final String resourceName, final File destination) throws TransferFailedException, ResourceDoesNotExistException, AuthorizationException {
         try {
             File temporaryDestination = createTmpFile(destination);
-
-            log.info("downloading: [" + S3Utils.getS3URI(getBucketName(), getKey(resourceName)) + "]...");
             S3Utils.download(new GetObjectRequest(getBucketName(), getKey(resourceName)),
                     getTransferManager(), temporaryDestination);
-
             try {
                 // then move, to have an atomic operation to guarantee we don't have a partially downloaded file on disk
                 FileUtils.moveFile(temporaryDestination, destination);
             } catch (IOException ex) {
                 throw new TransferFailedException("failed to get [" + S3Utils.getS3URI(getBucketName(), getKey(resourceName)) + "]", ex);
             }
-            log.info("downloaded: [" + S3Utils.getS3URI(getBucketName(), getKey(resourceName)) + "]...");
         } catch (TransferFailedException | AuthorizationException | ResourceDoesNotExistException e) {
             throw e;
         } catch (Exception e) {
@@ -425,9 +421,7 @@ public class S3Wagon implements Wagon {
     @Override
     public final void put(final File source, final String destination) throws TransferFailedException, ResourceDoesNotExistException, AuthorizationException {
         PutObjectRequest request = createPutObjectRequest(source, destination);
-        log.info("uploading: [" + S3Utils.getS3URI(getBucketName(), request.getKey()));
         S3Utils.upload(request, getTransferManager());
-        log.info("uploaded: [" + S3Utils.getS3URI(getBucketName(), request.getKey()));
     }
 
     @Override
