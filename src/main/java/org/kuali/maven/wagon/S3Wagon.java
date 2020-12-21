@@ -35,6 +35,7 @@ import org.apache.commons.lang.StringUtils;
 import org.apache.maven.wagon.ConnectionException;
 import org.apache.maven.wagon.ResourceDoesNotExistException;
 import org.apache.maven.wagon.TransferFailedException;
+import org.apache.maven.wagon.Wagon;
 import org.apache.maven.wagon.authentication.AuthenticationException;
 import org.apache.maven.wagon.authentication.AuthenticationInfo;
 import org.apache.maven.wagon.authorization.AuthorizationException;
@@ -70,7 +71,7 @@ import java.util.List;
  * @author Ben Hale
  * @author Jeff Caddel
  */
-public class S3Wagon extends AbstractWagon {
+public class S3Wagon implements Wagon {
 
     private static final int DEFAULT_READ_TIMEOUT = 60 * 1000;
     private static final File TEMP_DIR = S3Utils.getCanonicalFile(System.getProperty("java.io.tmpdir"));
