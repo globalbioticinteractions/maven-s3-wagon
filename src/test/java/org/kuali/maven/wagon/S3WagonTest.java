@@ -1,4 +1,4 @@
-/**
+/*
  * Copyright 2010-2015 The Kuali Foundation
  * <p>
  * Licensed under the Educational Community License, Version 2.0 (the "License");
@@ -97,8 +97,8 @@ public class S3WagonTest {
         Repository repository = getTestRepo();
         Properties parameters = new Properties();
         repository.setParameters(parameters);
-        Wagon wagon = new S3Wagon();
-        ((S3Wagon) wagon).setEndpoint("play.min.io");
+        S3Wagon wagon = new S3Wagon();
+        wagon.setEndpoint("play.min.io");
         wagon.connect(repository, auth);
         URL resource = getClass().getResource("/empty.properties");
         UUID uploadFilename = UUID.randomUUID();

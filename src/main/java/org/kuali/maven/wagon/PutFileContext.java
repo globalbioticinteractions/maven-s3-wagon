@@ -15,9 +15,6 @@
  */
 package org.kuali.maven.wagon;
 
-import org.apache.maven.wagon.events.TransferEvent;
-import org.apache.maven.wagon.resource.Resource;
-
 import java.io.File;
 
 /**
@@ -26,38 +23,6 @@ import java.io.File;
 public class PutFileContext {
 	private File source;
 	private String destination;
-	private Resource resource;
-	private TransferProgress progress;
-	private TransferListenerSupport listeners;
-
-	public void fireStart() {
-		listeners.fireTransferInitiated(getResource(), TransferEvent.REQUEST_PUT);
-		listeners.fireTransferStarted(getResource(), TransferEvent.REQUEST_PUT);
-	}
-
-	public void fireComplete() {
-		listeners.fireTransferCompleted(getResource(), TransferEvent.REQUEST_PUT);
-	}
-
-	public Resource getResource() {
-		return resource;
-	}
-
-	public void setResource(Resource resource) {
-		this.resource = resource;
-	}
-
-	public TransferProgress getProgress() {
-		return progress;
-	}
-
-	public void setProgress(TransferProgress progress) {
-		this.progress = progress;
-	}
-
-	public void setListeners(TransferListenerSupport listeners) {
-		this.listeners = listeners;
-	}
 
 	public String getDestination() {
 		return destination;

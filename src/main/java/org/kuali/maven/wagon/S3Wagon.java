@@ -16,39 +16,39 @@
 package org.kuali.maven.wagon;
 
 import com.amazonaws.AmazonClientException;
-import com.amazonaws.AmazonServiceException;
 import com.amazonaws.ClientConfiguration;
-import com.amazonaws.auth.AWSCredentials;
 import com.amazonaws.auth.AWSStaticCredentialsProvider;
 import com.amazonaws.auth.BasicAWSCredentials;
 import com.amazonaws.client.builder.AwsClientBuilder;
-import com.amazonaws.internal.ResettableInputStream;
 import com.amazonaws.services.s3.AmazonS3Client;
 import com.amazonaws.services.s3.AmazonS3ClientBuilder;
+import com.amazonaws.services.s3.model.GetObjectRequest;
 import com.amazonaws.services.s3.model.ListObjectsRequest;
 import com.amazonaws.services.s3.model.ObjectListing;
 import com.amazonaws.services.s3.model.ObjectMetadata;
 import com.amazonaws.services.s3.model.PutObjectRequest;
-import com.amazonaws.services.s3.model.S3Object;
 import com.amazonaws.services.s3.model.S3ObjectSummary;
 import com.amazonaws.services.s3.transfer.TransferManager;
 import com.amazonaws.services.s3.transfer.TransferManagerBuilder;
-import org.apache.commons.io.IOUtils;
+import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang.StringUtils;
+import org.apache.maven.wagon.ConnectionException;
 import org.apache.maven.wagon.ResourceDoesNotExistException;
 import org.apache.maven.wagon.TransferFailedException;
+import org.apache.maven.wagon.authentication.AuthenticationException;
 import org.apache.maven.wagon.authentication.AuthenticationInfo;
+import org.apache.maven.wagon.authorization.AuthorizationException;
+import org.apache.maven.wagon.events.SessionListener;
+import org.apache.maven.wagon.events.TransferListener;
 import org.apache.maven.wagon.proxy.ProxyInfo;
+import org.apache.maven.wagon.proxy.ProxyInfoProvider;
 import org.apache.maven.wagon.repository.Repository;
 import org.kuali.common.aws.s3.S3Utils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.File;
-import java.io.FileNotFoundException;
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
@@ -70,114 +70,109 @@ import java.util.List;
  * @author Ben Hale
  * @author Jeff Caddel
  */
-public class S3Wagon extends AbstractWagon implements RequestFactory {
+public class S3Wagon extends AbstractWagon {
 
-    /**
-     * Set the system property <code>maven.wagon.protocol</code> to <code>http</code> to force the wagon to communicate over <code>http</code>. Default is <code>https</code>.
-     */
-    public static final int DEFAULT_READ_TIMEOUT = 60 * 1000;
-    private static final File TEMP_DIR = getCanonicalFile(System.getProperty("java.io.tmpdir"));
+    private static final int DEFAULT_READ_TIMEOUT = 60 * 1000;
+    private static final File TEMP_DIR = S3Utils.getCanonicalFile(System.getProperty("java.io.tmpdir"));
     private static final String TEMP_DIR_PATH = TEMP_DIR.getAbsolutePath();
 
     private int readTimeout = DEFAULT_READ_TIMEOUT;
+
     private TransferManager transferManager;
 
     private static final Logger log = LoggerFactory.getLogger(S3Wagon.class);
 
     private AmazonS3Client client;
 
-    public String getBucketName() {
-        return bucketName;
-    }
-
-    public void setBucketName(String bucketName) {
-        this.bucketName = bucketName;
-    }
-
-    public void setBaseDir(String baseDir) {
-        this.baseDir = baseDir;
-    }
-
     private String bucketName;
     private String baseDir;
-
-    public String getEndpoint() {
-        return endpoint;
-    }
-
-    public void setEndpoint(String endpoint) {
-        this.endpoint = endpoint;
-    }
-
     private String endpoint = null;
 
-    public S3Wagon() {
-        super(true);
-        S3Listener listener = new S3Listener();
-        super.addSessionListener(listener);
-        super.addTransferListener(listener);
-    }
+    private int timeout;
 
-    protected AmazonS3Client getAmazonS3Client(final AuthenticationInfo credentials) {
-        return getAmazonS3Client(new BasicAWSCredentials(
-                credentials.getUserName(),
-                credentials.getPassword()
-        ));
-    }
+    private boolean interactive;
 
-    protected AmazonS3Client getAmazonS3Client(final AWSCredentials credentials) {
+    private Repository repository;
+
+    AmazonS3Client getAmazonS3Client(final AuthenticationInfo credentials) {
         AmazonS3ClientBuilder builder = AmazonS3ClientBuilder
                 .standard()
                 .withClientConfiguration(new ClientConfiguration())
-                .withCredentials(new AWSStaticCredentialsProvider(credentials));
-
+                .withCredentials(new AWSStaticCredentialsProvider(new BasicAWSCredentials(
+                        credentials.getUserName(),
+                        credentials.getPassword()
+                )));
         builder = enableCustomEndpointIfNeeded(builder);
-
         return (AmazonS3Client) builder.build();
     }
 
     private AmazonS3ClientBuilder enableCustomEndpointIfNeeded(AmazonS3ClientBuilder builder) {
-        log.debug("endpoint: [" + getEndpoint() + "]");
         if (StringUtils.isNotBlank(getEndpoint())) {
             builder = builder.withEndpointConfiguration(
                     new AwsClientBuilder.EndpointConfiguration(endpoint, null)
             ).enablePathStyleAccess();
-            log.debug("enabled custom endpoint [" + endpoint + "]");
+            log.info("using s3 endpoint: [" + endpoint + "]");
         }
         return builder;
     }
 
     @Override
-    protected void connectToRepository(Repository source, AuthenticationInfo auth, ProxyInfo proxy) {
-
-        if (auth == null
-                || StringUtils.isBlank(auth.getPassword())
-                || StringUtils.isBlank(auth.getUserName())) {
-            throw new IllegalStateException("The S3 wagon needs AWS Access Key set as the username and AWS Secret Key set as the password. eg:\n" +
-                    "<server>\n" +
-                    "  <id>my.server</id>\n" +
-                    "  <username>[AWS Access Key ID]</username>\n" +
-                    "  <password>[AWS Secret Access Key]</password>\n" +
-                    "</server>\n");
-        }
-
-        this.client = getAmazonS3Client(auth);
-        String multipartCopyPartSize = source.getParameter("multipartCopyPartSize");
-
-        // reduce default copy part size to increase friendliness to cloudflare and nginx
-        long multipartCopyPartSize1 = StringUtils.isBlank(multipartCopyPartSize)
-                ? 1024 * 1024 * 10L
-                : parseMultipartCopyPartSize(multipartCopyPartSize);
-
-        this.transferManager = TransferManagerBuilder
-                .standard()
-                .withMultipartCopyPartSize(multipartCopyPartSize1)
-                .withS3Client(this.client)
-                .build();
-
-        this.bucketName = source.getHost();
-        this.baseDir = getRepositoryBaseDir(source);
+    public final Repository getRepository() {
+        return repository;
     }
+
+    @Override
+    public final boolean isInteractive() {
+        return interactive;
+    }
+
+    @Override
+    public final void setInteractive(final boolean interactive) {
+        this.interactive = interactive;
+    }
+
+    @Override
+    public final void disconnect() throws ConnectionException {
+        try {
+            if (getTransferManager() != null) {
+                getTransferManager().shutdownNow();
+            }
+        } catch (Exception e) {
+            throw new ConnectionException("Could not disconnect from repository", e);
+        }
+    }
+
+    @Override
+    public final void get(final String resourceName, final File destination) throws TransferFailedException, ResourceDoesNotExistException, AuthorizationException {
+        try {
+            File temporaryDestination = createTmpFile(destination);
+
+            S3Utils.download(new GetObjectRequest(getBucketName(), getKey(resourceName)),
+                    getTransferManager(), temporaryDestination);
+
+            try {
+                // then move, to have an atomic operation to guarantee we don't have a partially downloaded file on disk
+                FileUtils.moveFile(temporaryDestination, destination);
+            } catch (IOException ex) {
+                throw new TransferFailedException("failed to get [" + S3Utils.getS3URI(getBucketName(), getKey(resourceName)) + "]", ex);
+            }
+        } catch (TransferFailedException | AuthorizationException | ResourceDoesNotExistException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new TransferFailedException("Transfer of resource " + destination + "failed", e);
+        }
+    }
+
+    public final List<String> getFileList(final String destinationDirectory) throws TransferFailedException, ResourceDoesNotExistException, AuthorizationException {
+        try {
+            return listDirectory(destinationDirectory);
+        } catch (TransferFailedException | ResourceDoesNotExistException | AuthorizationException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new TransferFailedException("Listing of directory " + destinationDirectory + "failed", e);
+        }
+    }
+
 
     private long parseMultipartCopyPartSize(String multipartCopyPartSize) {
         try {
@@ -194,8 +189,7 @@ public class S3Wagon extends AbstractWagon implements RequestFactory {
         }
     }
 
-    @Override
-    protected boolean doesRemoteResourceExist(final String resourceName) {
+    private boolean doesRemoteResourceExist(final String resourceName) {
         try {
             client.getObjectMetadata(getBucketName(), getBaseDir() + resourceName);
         } catch (AmazonClientException e) {
@@ -204,101 +198,61 @@ public class S3Wagon extends AbstractWagon implements RequestFactory {
         return true;
     }
 
-    @Override
-    protected void disconnectFromRepository() {
-        // Nothing to do for S3
-    }
-
-    /**
-     * Pull an object out of an S3 bucket and write it to a file
-     */
-    @Override
-    protected void getResource(final String resourceName, final File destination, final TransferProgress progress) throws ResourceDoesNotExistException, IOException {
-        // Obtain the object from S3
-        S3Object object;
+    private File createTmpFile(File destination) throws TransferFailedException {
         try {
-            String key = baseDir + resourceName;
-            object = client.getObject(getBucketName(), key);
-        } catch (Exception e) {
-            throw new ResourceDoesNotExistException("Resource " + resourceName + " does not exist in the repository", e);
+            return File.createTempFile(destination.getName(), ".tmp", destination.getParentFile());
+        } catch (IOException e) {
+            throw new TransferFailedException("cannot create temporary file for download", e);
         }
-
-        // first write the file to a temporary location
-        File temporaryDestination = File.createTempFile(destination.getName(), ".tmp", destination.getParentFile());
-        InputStream in = null;
-        OutputStream out = null;
-        try {
-            in = object.getObjectContent();
-            out = new TransferProgressFileOutputStream(temporaryDestination, progress);
-            byte[] buffer = new byte[1024];
-            int length;
-            while ((length = in.read(buffer)) != -1) {
-                out.write(buffer, 0, length);
-            }
-        } finally {
-            IOUtils.closeQuietly(in);
-            IOUtils.closeQuietly(out);
-        }
-        // then move, to have an atomic operation to guarantee we don't have a partially downloaded file on disk
-        temporaryDestination.renameTo(destination);
     }
 
     /**
      * Is the S3 object newer than the timestamp passed in?
      */
-    @Override
-    protected boolean isRemoteResourceNewer(final String resourceName, final long timestamp) {
-        ObjectMetadata metadata = client.getObjectMetadata(getBucketName(), baseDir + resourceName);
+    private boolean isRemoteResourceNewer(final String resourceName, final long timestamp) {
+        ObjectMetadata metadata = client.getObjectMetadata(getBucketName(), getKey(resourceName));
         return metadata.getLastModified().compareTo(new Date(timestamp)) < 0;
+    }
+
+    private String getKey(String resourceName) {
+        return getBaseDir() + resourceName;
     }
 
     /**
      * List all of the objects in a given directory
      */
-    @Override
-    protected List<String> listDirectory(String directory) throws Exception {
-        // info("directory=" + directory);
+    private List<String> listDirectory(String directory) throws Exception {
         if (StringUtils.isBlank(directory)) {
             directory = "";
         }
         String delimiter = "/";
-        String prefix = baseDir + directory;
+        String prefix = getKey(directory);
         if (!prefix.endsWith(delimiter)) {
             prefix += delimiter;
         }
-        // info("prefix=" + prefix);
         ListObjectsRequest request = new ListObjectsRequest();
-        request.setBucketName(bucketName);
+        request.setBucketName(getBucketName());
         request.setPrefix(prefix);
         request.setDelimiter(delimiter);
         ObjectListing objectListing = client.listObjects(request);
-        // info("truncated=" + objectListing.isTruncated());
-        // info("prefix=" + prefix);
-        // info("basedir=" + basedir);
-        List<String> fileNames = new ArrayList<String>();
+        List<String> fileNames = new ArrayList<>();
         for (S3ObjectSummary summary : objectListing.getObjectSummaries()) {
-            // info("summary.getKey()=" + summary.getKey());
             String key = summary.getKey();
-            String relativeKey = key.startsWith(baseDir) ? key.substring(baseDir.length()) : key;
+            String relativeKey = key.startsWith(getBaseDir())
+                    ? key.substring(getBaseDir().length())
+                    : key;
+
             boolean add = !StringUtils.isBlank(relativeKey) && !relativeKey.equals(directory);
             if (add) {
-                // info("Adding key - " + relativeKey);
                 fileNames.add(relativeKey);
             }
         }
         for (String commonPrefix : objectListing.getCommonPrefixes()) {
-            String value = commonPrefix.startsWith(baseDir) ? commonPrefix.substring(baseDir.length()) : commonPrefix;
-            // info("commonPrefix=" + commonPrefix);
-            // info("relativeValue=" + relativeValue);
-            // info("Adding common prefix - " + value);
+            String value = commonPrefix.startsWith(getBaseDir())
+                    ? commonPrefix.substring(getBaseDir().length())
+                    : commonPrefix;
             fileNames.add(value);
         }
-        // StringBuilder sb = new StringBuilder();
-        // sb.append("\n");
-        // for (String fileName : fileNames) {
-        // sb.append(fileName + "\n");
-        // }
-        // info(sb.toString());
         return fileNames;
     }
 
@@ -310,12 +264,12 @@ public class S3Wagon extends AbstractWagon implements RequestFactory {
      * @param key S3 Key string.
      * @return Normalized version of {@code key}.
      */
-    protected String getCanonicalKey(String key) {
+    private String getCanonicalKey(String key) {
         // release/./css/style.css
-        String path = baseDir + key;
+        String path = getKey(key);
 
         // /temp/release/css/style.css
-        File file = getCanonicalFile(new File(TEMP_DIR, path));
+        File file = S3Utils.getCanonicalFile(new File(TEMP_DIR, path));
         String canonical = file.getAbsolutePath();
 
         // release/css/style.css
@@ -323,46 +277,16 @@ public class S3Wagon extends AbstractWagon implements RequestFactory {
         String suffix = canonical.substring(pos);
 
         // Always replace backslash with forward slash just in case we are running on Windows
-        String canonicalKey = suffix.replace("\\", "/");
-
-        // Return the canonical key
-        return canonicalKey;
-    }
-
-    protected static File getCanonicalFile(String path) {
-        return getCanonicalFile(new File(path));
-    }
-
-    protected static File getCanonicalFile(File file) {
-        try {
-            return new File(file.getCanonicalPath());
-        } catch (IOException e) {
-            throw new IllegalArgumentException("Unexpected IO error", e);
-        }
-    }
-
-    private ObjectMetadata getObjectMetadata(final File source) {
-        ObjectMetadata omd = new ObjectMetadata();
-        omd.setContentLength(source.length());
-        return omd;
+        return suffix.replace("\\", "/");
     }
 
     /**
      * Create a PutObjectRequest based on the PutContext
      */
-    public PutObjectRequest getPutObjectRequest(PutFileContext context) {
+    public PutObjectRequest createPutObjectRequest(PutFileContext context) {
         File source = context.getSource();
         String destination = context.getDestination();
-        TransferProgress progress = context.getProgress();
-        return getPutObjectRequest(source, destination, progress);
-    }
-
-    protected InputStream getInputStream(File source, TransferProgress progress) throws IOException {
-        if (progress == null) {
-            return new ResettableInputStream(source);
-        } else {
-            return new TransferProgressFileInputStream(source, progress);
-        }
+        return createPutObjectRequest(source, destination);
     }
 
     /**
@@ -370,20 +294,11 @@ public class S3Wagon extends AbstractWagon implements RequestFactory {
      *
      * @param source      Local file to upload.
      * @param destination Destination S3 key.
-     * @param progress    Transfer listener.
      * @return {@link PutObjectRequest} instance.
      */
-    protected PutObjectRequest getPutObjectRequest(File source, String destination, TransferProgress progress) {
-        try {
-            String key = getCanonicalKey(destination);
-            InputStream input = getInputStream(source, progress);
-            ObjectMetadata metadata = getObjectMetadata(source);
-            return new PutObjectRequest(bucketName, key, input, metadata);
-        } catch (FileNotFoundException e) {
-            throw new AmazonServiceException("File not found", e);
-        } catch (IOException e) {
-            throw new AmazonServiceException("Error reading file", e);
-        }
+    PutObjectRequest createPutObjectRequest(File source, String destination) {
+        String key = getCanonicalKey(destination);
+        return new PutObjectRequest(getBucketName(), key, source);
     }
 
     /**
@@ -391,64 +306,202 @@ public class S3Wagon extends AbstractWagon implements RequestFactory {
      * to use the path of the file on the local file system as the key to the file in the bucket. The S3 bucket does not contain a separate key for the directory itself.
      */
     public final void putDirectory(File sourceDir, String destinationDir) throws TransferFailedException {
-
-        // Examine the contents of the directory
-        List<PutFileContext> contexts = getPutFileContexts(sourceDir, destinationDir);
+        List<PutFileContext> contexts = S3Utils.createPutFileContexts(sourceDir, destinationDir);
         for (PutFileContext context : contexts) {
-            PutObjectRequest request = getPutObjectRequest(context);
-            // Upload the file to S3, using multi-part upload for large files
-            S3Utils.upload(request, transferManager);
+            PutObjectRequest request = createPutObjectRequest(context);
+            S3Utils.upload(request, getTransferManager());
         }
-
     }
 
-    /**
-     * Store a resource into S3
-     */
     @Override
-    protected void putResource(final File source, final String destination, final TransferProgress progress) throws IOException {
-        // Create a new PutObjectRequest
-        PutObjectRequest request = getPutObjectRequest(source, destination, progress);
-
-        // Upload the file to S3, using multi-part upload for large files
-        S3Utils.upload(request, transferManager);
+    public boolean supportsDirectoryCopy() {
+        return true;
     }
 
-    /**
-     * Convert "/" -&gt; ""<br>
-     * Convert "/snapshot/" &gt; "snapshot/"<br>
-     * Convert "/snapshot" -&gt; "snapshot/"<br>
-     *
-     * @param source Repository info.
-     * @return Normalized repository base dir.
-     */
-    public static String getRepositoryBaseDir(final Repository source) {
-        StringBuilder sb = new StringBuilder(source.getBasedir());
-        sb.deleteCharAt(0);
-        if (sb.length() == 0) {
-            return "";
-        }
-        if (sb.charAt(sb.length() - 1) != '/') {
-            sb.append('/');
-        }
-        return sb.toString();
-    }
-
-    public String getBaseDir() {
+    private String getBaseDir() {
         return baseDir;
-    }
-
-    @Override
-    protected PutFileContext getPutFileContext(File source, String destination) {
-        return super.getPutFileContext(source, destination);
     }
 
     public int getReadTimeout() {
         return readTimeout;
     }
 
+    @Override
+    public boolean hasTransferListener(TransferListener listener) {
+        return false;
+    }
+
+    public void connect(final Repository source, final AuthenticationInfo authenticationInfo, final ProxyInfoProvider proxyInfoProvider) throws ConnectionException,
+            AuthenticationException {
+        doConnect(source, authenticationInfo, null);
+    }
+
+    @Override
+    public void connect(final Repository source, final ProxyInfoProvider proxyInfoProvider) throws ConnectionException, AuthenticationException {
+        doConnect(source, null, null);
+    }
+
+    @Override
+    public final void connect(final Repository source) throws ConnectionException, AuthenticationException {
+        doConnect(source, null, null);
+    }
+
+    @Override
+    public final void connect(final Repository source, final ProxyInfo proxyInfo) throws ConnectionException, AuthenticationException {
+        connect(source, null, proxyInfo);
+    }
+
+    @Override
+    public final void connect(final Repository source, final AuthenticationInfo authenticationInfo) throws ConnectionException, AuthenticationException {
+        doConnect(source, authenticationInfo, null);
+    }
+
+    private void doConnect(final Repository source, final AuthenticationInfo authenticationInfo, final ProxyInfo proxyInfo) throws ConnectionException {
+        repository = source;
+        log.debug("Connecting to " + repository.getUrl());
+        try {
+            if (authenticationInfo == null
+                    || StringUtils.isBlank(authenticationInfo.getPassword())
+                    || StringUtils.isBlank(authenticationInfo.getUserName())) {
+                throw new IllegalStateException("The S3 wagon needs AWS Access Key set as the username and AWS Secret Key set as the password. eg:\n" +
+                        "<server>\n" +
+                        "  <id>my.server</id>\n" +
+                        "  <username>[AWS Access Key ID]</username>\n" +
+                        "  <password>[AWS Secret Access Key]</password>\n" +
+                        "</server>\n");
+            }
+
+            this.client = getAmazonS3Client(authenticationInfo);
+            String multipartCopyPartSize = source.getParameter("multipartCopyPartSize");
+
+            // reduce default copy part size to increase friendliness to cloudflare and nginx
+            long multipartCopyPartSize1 = StringUtils.isBlank(multipartCopyPartSize)
+                    ? 1024 * 1024 * 10L
+                    : parseMultipartCopyPartSize(multipartCopyPartSize);
+
+            setTransferManager(TransferManagerBuilder
+                    .standard()
+                    .withMultipartCopyPartSize(multipartCopyPartSize1)
+                    .withS3Client(this.client)
+                    .build());
+
+            setBucketName(source.getHost());
+            setBaseDir(S3Utils.getRepositoryBaseDir(source));
+        } catch (Exception e) {
+            throw new ConnectionException("Could not connect to repository", e);
+        }
+    }
+
+    @Override
+    public final void connect(final Repository source, final AuthenticationInfo authenticationInfo, final ProxyInfo proxyInfo) throws ConnectionException, AuthenticationException {
+        doConnect(source, authenticationInfo, proxyInfo);
+    }
+
+    @Override
+    public final boolean getIfNewer(final String resourceName, final File destination, final long timestamp) throws TransferFailedException, ResourceDoesNotExistException,
+            AuthorizationException {
+        try {
+            if (isRemoteResourceNewer(resourceName, timestamp)) {
+                get(resourceName, destination);
+                return true;
+            } else {
+                return false;
+            }
+        } catch (TransferFailedException | ResourceDoesNotExistException | AuthorizationException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new TransferFailedException("Transfer of resource " + destination + "failed", e);
+        }
+    }
+
+    @Deprecated
+    public final void openConnection() throws ConnectionException, AuthenticationException {
+        // Nothing to do here (never called by the wagon manager)
+    }
+
+    @Override
+    public final void put(final File source, final String destination) throws TransferFailedException, ResourceDoesNotExistException, AuthorizationException {
+        PutObjectRequest request = createPutObjectRequest(source, destination);
+        S3Utils.upload(request, getTransferManager());
+    }
+
+    @Override
+    public final boolean resourceExists(final String resourceName) throws TransferFailedException, AuthorizationException {
+        try {
+            return doesRemoteResourceExist(resourceName);
+        } catch (Exception e) {
+            throw new TransferFailedException("Listing of resource " + resourceName + "failed", e);
+        }
+    }
+
+
+    @Override
+    public int getTimeout() {
+        return this.timeout;
+    }
+
+    @Override
+    public void setTimeout(final int timeoutValue) {
+        this.timeout = timeoutValue;
+    }
+
+    @Override
+    public void addSessionListener(SessionListener listener) {
+
+    }
+
+    @Override
+    public void removeSessionListener(SessionListener listener) {
+
+    }
+
+    @Override
+    public boolean hasSessionListener(SessionListener listener) {
+        return false;
+    }
+
+    @Override
+    public void addTransferListener(TransferListener listener) {
+
+    }
+
+    @Override
+    public void removeTransferListener(TransferListener listener) {
+
+    }
+
+
     public void setReadTimeout(int readTimeout) {
         this.readTimeout = readTimeout;
     }
+
+    private TransferManager getTransferManager() {
+        return transferManager;
+    }
+
+    private void setTransferManager(TransferManager transferManager) {
+        this.transferManager = transferManager;
+    }
+
+    private String getBucketName() {
+        return bucketName;
+    }
+
+    void setBucketName(String bucketName) {
+        this.bucketName = bucketName;
+    }
+
+    void setBaseDir(String baseDir) {
+        this.baseDir = baseDir;
+    }
+
+    private String getEndpoint() {
+        return endpoint;
+    }
+
+    void setEndpoint(String endpoint) {
+        this.endpoint = endpoint;
+    }
+
 
 }
