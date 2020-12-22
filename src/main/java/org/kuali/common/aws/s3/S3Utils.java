@@ -16,28 +16,19 @@
 package org.kuali.common.aws.s3;
 
 import com.amazonaws.AmazonClientException;
-import com.amazonaws.event.ProgressEvent;
-import com.amazonaws.event.ProgressListener;
 import com.amazonaws.services.s3.model.AmazonS3Exception;
 import com.amazonaws.services.s3.model.GetObjectRequest;
 import com.amazonaws.services.s3.model.PutObjectRequest;
-import com.amazonaws.services.s3.transfer.Download;
-import com.amazonaws.services.s3.transfer.PersistableTransfer;
 import com.amazonaws.services.s3.transfer.TransferManager;
-import com.amazonaws.services.s3.transfer.Upload;
-import com.amazonaws.services.s3.transfer.internal.S3ProgressListener;
 import org.apache.maven.wagon.ResourceDoesNotExistException;
 import org.apache.maven.wagon.TransferFailedException;
 import org.apache.maven.wagon.WagonException;
 import org.apache.maven.wagon.repository.Repository;
-import org.kuali.maven.wagon.PutFileContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.List;
 
 /**
  * Utility methods related to Amazon S3
@@ -99,36 +90,6 @@ public class S3Utils {
             sb.append('/');
         }
         return sb.toString();
-    }
-
-    private static PutFileContext getPutFileContext(File source, String destination) {
-        PutFileContext context = new PutFileContext();
-        context.setDestination(destination);
-        context.setSource(source);
-        return context;
-    }
-
-    public static List<PutFileContext> createPutFileContexts(File sourceDirectory, String destinationDirectory) {
-
-        List<PutFileContext> contexts = new ArrayList<PutFileContext>();
-
-        if (sourceDirectory != null) {
-            // Cycle through all the files in this directory
-            File[] files = sourceDirectory.listFiles();
-            if (files != null) {
-                for (File f : files) {
-                    // We hit a sub-directory
-                    if (f.isDirectory()) {
-                        contexts.addAll(createPutFileContexts(f, destinationDirectory + "/" + f.getName()));
-                    } else {
-                        PutFileContext context = getPutFileContext(f, destinationDirectory + "/" + f.getName());
-                        contexts.add(context);
-                    }
-                }
-            }
-        }
-
-        return contexts;
     }
 
     public static File getCanonicalFile(String path) {
