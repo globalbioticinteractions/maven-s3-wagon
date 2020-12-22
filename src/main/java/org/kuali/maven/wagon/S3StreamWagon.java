@@ -71,11 +71,13 @@ import java.util.List;
  * <p>
  *     Note that non-AWS endpoint can be configured in settings.xml using:
  *
+ *      {@code
  *      ...
  *      <configuration>
  *             <endpoint>https://s3.example.org</endpoint>
  *      </configuration>
  *      ...
+ *      }
  * </p>
  *
  * @author Ben Hale
