@@ -56,7 +56,7 @@ public class S3StreamWagonTest {
 
     private static AmazonS3Client getClient() {
         return ((S3StreamWagon) getS3WagonForMinioTestEndpoint()
-        ).getAmazonS3Client(getMinioTestAuth());
+        ).createS3Client(getMinioTestAuth());
     }
 
     @AfterClass

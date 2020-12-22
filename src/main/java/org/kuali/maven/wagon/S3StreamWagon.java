@@ -15,7 +15,6 @@
  */
 package org.kuali.maven.wagon;
 
-import com.amazonaws.AmazonClientException;
 import com.amazonaws.ClientConfiguration;
 import com.amazonaws.auth.AWSStaticCredentialsProvider;
 import com.amazonaws.auth.BasicAWSCredentials;
@@ -25,7 +24,6 @@ import com.amazonaws.services.s3.AmazonS3ClientBuilder;
 import com.amazonaws.services.s3.model.GetObjectRequest;
 import com.amazonaws.services.s3.model.ListObjectsRequest;
 import com.amazonaws.services.s3.model.ObjectListing;
-import com.amazonaws.services.s3.model.ObjectMetadata;
 import com.amazonaws.services.s3.model.PutObjectRequest;
 import com.amazonaws.services.s3.model.S3ObjectSummary;
 import com.amazonaws.services.s3.transfer.TransferManager;
@@ -54,7 +52,6 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.util.ArrayList;
-import java.util.Date;
 import java.util.List;
 
 /**
@@ -86,7 +83,7 @@ public class S3StreamWagon extends StreamWagon {
 
     private static final Logger log = LoggerFactory.getLogger(S3StreamWagon.class);
 
-    private AmazonS3Client client;
+    private static AmazonS3Client client;
 
     private String bucketName;
     private String baseDir;
@@ -94,7 +91,14 @@ public class S3StreamWagon extends StreamWagon {
 
     private int timeout;
 
-    AmazonS3Client getAmazonS3Client(final AuthenticationInfo credentials) {
+    private AmazonS3Client getS3Client(final AuthenticationInfo credentials) {
+        if (client == null) {
+            client = createS3Client(credentials);
+        }
+        return client;
+    }
+
+    AmazonS3Client createS3Client(AuthenticationInfo credentials) {
         AmazonS3ClientBuilder builder = AmazonS3ClientBuilder
                 .standard()
                 .withClientConfiguration(new ClientConfiguration())
@@ -109,25 +113,28 @@ public class S3StreamWagon extends StreamWagon {
 
     private AmazonS3ClientBuilder enableCustomEndpointIfNeeded(AmazonS3ClientBuilder builder) {
         if (StringUtils.isNotBlank(getEndpoint())) {
-            builder = builder.withEndpointConfiguration(
-                    new AwsClientBuilder.EndpointConfiguration(endpoint, null)
-            ).enablePathStyleAccess();
-            log.info("using s3 endpoint: [" + endpoint + "]");
+            builder = builder
+                    .withEndpointConfiguration(new AwsClientBuilder.EndpointConfiguration(endpoint, null))
+                    .enablePathStyleAccess();
+            log.debug("using s3 endpoint: [" + endpoint + "]");
         }
         return builder;
     }
 
     @Override
-    public void fillInputData(InputData inputData) throws TransferFailedException, ResourceDoesNotExistException, AuthorizationException {
-        File tmp = null;
+    public void fillInputData(InputData inputData) throws
+            TransferFailedException, ResourceDoesNotExistException, AuthorizationException {
+        File tmpFile = null;
         try {
-            tmp = File.createTempFile("download.s3", "tmp");
-            doGet(inputData.getResource().getName(), tmp);
-            inputData.setInputStream(IOUtils.toBufferedInputStream(new FileInputStream(tmp)));
+            tmpFile = File.createTempFile("maven.wagon.s3.download", "tmp");
+            log.debug("staging download using tmp file at [" + tmpFile.getAbsolutePath() + "]");
+
+            doGet(inputData.getResource().getName(), tmpFile);
+            inputData.setInputStream(IOUtils.toBufferedInputStream(new FileInputStream(tmpFile)));
         } catch (IOException e) {
-            throw new TransferFailedException("failed to create tmpfile", e);
+            throw new TransferFailedException("failed transfer of [" + inputData.getResource().getName() + "]", e);
         } finally {
-            FileUtils.deleteQuietly(tmp);
+            FileUtils.deleteQuietly(tmpFile);
         }
 
     }
@@ -141,7 +148,8 @@ public class S3StreamWagon extends StreamWagon {
             @Override
             public void write(int b) throws IOException {
                 if (tmpFile == null) {
-                    tmpFile = File.createTempFile("upload.s3", ".tmp");
+                    tmpFile = File.createTempFile("maven.wagon.s3.upload", ".tmp");
+                    log.debug("staging upload using tmp file at [" + tmpFile.getAbsolutePath() + "]");
                     os = new FileOutputStream(tmpFile);
                 }
                 os.write(b);
@@ -168,10 +176,11 @@ public class S3StreamWagon extends StreamWagon {
 
     @Override
     public void closeConnection() throws ConnectionException {
-        log.info("closing connection");
+        log.debug("closing connection");
     }
 
-    private void doGet(final String resourceName, final File destination) throws TransferFailedException, ResourceDoesNotExistException, AuthorizationException {
+    private void doGet(final String resourceName, final File destination) throws
+            TransferFailedException, ResourceDoesNotExistException, AuthorizationException {
         if (destination == null) {
             throw new TransferFailedException("destination cannot be null");
         }
@@ -205,7 +214,8 @@ public class S3StreamWagon extends StreamWagon {
     }
 
     @Override
-    public final List<String> getFileList(final String destinationDirectory) throws TransferFailedException, ResourceDoesNotExistException, AuthorizationException {
+    public final List<String> getFileList(final String destinationDirectory) throws
+            TransferFailedException, ResourceDoesNotExistException, AuthorizationException {
         try {
             return listDirectory(destinationDirectory);
         } catch (TransferFailedException | ResourceDoesNotExistException | AuthorizationException e) {
@@ -310,7 +320,8 @@ public class S3StreamWagon extends StreamWagon {
     }
 
 
-    private void doConnect(final Repository source, final AuthenticationInfo authenticationInfo, final ProxyInfo proxyInfo) throws ConnectionException {
+    private void doConnect(final Repository source, final AuthenticationInfo authenticationInfo,
+                           final ProxyInfo proxyInfo) throws ConnectionException {
         repository = source;
         log.debug("Connecting to " + repository.getUrl());
         try {
@@ -325,7 +336,7 @@ public class S3StreamWagon extends StreamWagon {
                         "</server>\n");
             }
 
-            this.client = getAmazonS3Client(authenticationInfo);
+            this.client = getS3Client(authenticationInfo);
             String multipartCopyPartSize = source.getParameter("multipartCopyPartSize");
 
             // reduce default copy part size to increase friendliness to cloudflare and nginx
@@ -347,7 +358,8 @@ public class S3StreamWagon extends StreamWagon {
     }
 
 
-    private void doPut(final File source, final String destination) throws TransferFailedException, ResourceDoesNotExistException, AuthorizationException {
+    private void doPut(final File source, final String destination) throws
+            TransferFailedException, ResourceDoesNotExistException, AuthorizationException {
         PutObjectRequest request = createPutObjectRequest(source, destination);
         S3Utils.upload(request, getTransferManager());
     }
