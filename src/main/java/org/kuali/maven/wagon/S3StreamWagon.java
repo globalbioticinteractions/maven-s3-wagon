@@ -98,10 +98,11 @@ public class S3StreamWagon extends StreamWagon {
         AmazonS3ClientBuilder builder = AmazonS3ClientBuilder
                 .standard()
                 .withClientConfiguration(new ClientConfiguration())
-                .withCredentials(new AWSStaticCredentialsProvider(new BasicAWSCredentials(
-                        credentials.getUserName(),
-                        credentials.getPassword()
-                )));
+                .withCredentials(new AWSStaticCredentialsProvider(
+                        new BasicAWSCredentials(
+                                credentials.getUserName(),
+                                credentials.getPassword()
+                        )));
         builder = enableCustomEndpointIfNeeded(builder);
         return (AmazonS3Client) builder.build();
     }
@@ -212,25 +213,6 @@ public class S3StreamWagon extends StreamWagon {
         } catch (Exception e) {
             throw new TransferFailedException("Listing of directory " + destinationDirectory + "failed", e);
         }
-    }
-
-
-
-    private boolean doesRemoteResourceExist(final String resourceName) {
-        try {
-            client.getObjectMetadata(getBucketName(), getBaseDir() + resourceName);
-        } catch (AmazonClientException e) {
-            return false;
-        }
-        return true;
-    }
-
-    /**
-     * Is the S3 object newer than the timestamp passed in?
-     */
-    private boolean isRemoteResourceNewer(final String resourceName, final long timestamp) {
-        ObjectMetadata metadata = client.getObjectMetadata(getBucketName(), getKey(resourceName));
-        return metadata.getLastModified().compareTo(new Date(timestamp)) < 0;
     }
 
     private String getKey(String resourceName) {
