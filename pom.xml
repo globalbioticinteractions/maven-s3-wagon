@@ -139,7 +139,8 @@
         </snapshotRepository>
         <repository>
             <id>ossrh</id>
-            <url>https://oss.sonatype.org/service/local/staging/deploy/maven2/</url>
+            <!--url>https://oss.sonatype.org/service/local/staging/deploy/maven2/</url-->
+            <url>file:///home/jorrit/tmp/repo</url>
         </repository>
     </distributionManagement>
 

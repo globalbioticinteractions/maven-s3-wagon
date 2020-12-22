@@ -24,8 +24,6 @@ import org.apache.maven.wagon.ResourceDoesNotExistException;
 import org.apache.maven.wagon.TransferFailedException;
 import org.apache.maven.wagon.WagonException;
 import org.apache.maven.wagon.repository.Repository;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.io.IOException;
@@ -35,7 +33,8 @@ import java.io.IOException;
  */
 public class S3Utils {
 
-    private static final Logger log = LoggerFactory.getLogger(S3Utils.class);
+    private static final File TEMP_DIR = getCanonicalFile(System.getProperty("java.io.tmpdir"));
+    private static final String TEMP_DIR_PATH = TEMP_DIR.getAbsolutePath();
 
     public static void download(GetObjectRequest request,
                                 TransferManager manager,
@@ -102,5 +101,34 @@ public class S3Utils {
         } catch (IOException e) {
             throw new IllegalArgumentException("Unexpected IO error", e);
         }
+    }
+
+    public static String getKey(String baseDir, String resourceName) {
+        return baseDir + resourceName;
+    }
+
+    /**
+     * Normalize the key to our S3 object:<br>
+     * Convert <code>./css/style.css</code> into <code>/css/style.css</code><br>
+     * Convert <code>/foo/bar/../../css/style.css</code> into <code>/css/style.css</code><br>
+     *
+     * @param baseDir path prefix
+     * @param key S3 Key string.
+     * @return Normalized version of {@code key}.
+     */
+    public static String getCanonicalKey(String baseDir, String key) {
+        // release/./css/style.css
+        String path = getKey(baseDir, key);
+
+        // /temp/release/css/style.css
+        File file = getCanonicalFile(new File(TEMP_DIR, path));
+        String canonical = file.getAbsolutePath();
+
+        // release/css/style.css
+        int pos = TEMP_DIR_PATH.length() + 1;
+        String suffix = canonical.substring(pos);
+
+        // Always replace backslash with forward slash just in case we are running on Windows
+        return suffix.replace("\\", "/");
     }
 }

@@ -56,7 +56,7 @@ import java.util.List;
 
 /**
  * <p>
- * An implementation of the Maven Wagon interface that is integrated with the Amazon S3 service.
+ * An implementation of the Maven Wagon interface that is integrated with the Amazon S3 compatible service.
  * </p>
  *
  * <p>
@@ -68,20 +68,29 @@ import java.util.List;
  * This implementation uses the <code>username</code> and <code>password</code> portions of the server authentication metadata for credentials.
  * </p>
  *
+ * <p>
+ *     Note that non-AWS endpoint can be configured in settings.xml using:
+ *
+ *      ...
+ *      <configuration>
+ *             <endpoint>https://s3.example.org</endpoint>
+ *      </configuration>
+ *      ...
+ * </p>
+ *
  * @author Ben Hale
  * @author Jeff Caddel
+ * @author Jorrit Poelen
  */
 public class S3StreamWagon extends StreamWagon {
 
+    private static final Logger log = LoggerFactory.getLogger(S3StreamWagon.class);
+
     private static final int DEFAULT_READ_TIMEOUT = 60 * 1000;
-    private static final File TEMP_DIR = S3Utils.getCanonicalFile(System.getProperty("java.io.tmpdir"));
-    private static final String TEMP_DIR_PATH = TEMP_DIR.getAbsolutePath();
 
     private int readTimeout = DEFAULT_READ_TIMEOUT;
 
     private TransferManager transferManager;
-
-    private static final Logger log = LoggerFactory.getLogger(S3StreamWagon.class);
 
     private static AmazonS3Client client;
 
@@ -188,13 +197,14 @@ public class S3StreamWagon extends StreamWagon {
             if (destination.exists() && !FileUtils.deleteQuietly(destination)) {
                 throw new TransferFailedException("cannot overwrite existing destination [" + destination.getAbsolutePath() + "]");
             }
-            S3Utils.download(new GetObjectRequest(getBucketName(), getKey(resourceName)),
+            S3Utils.download(
+                    new GetObjectRequest(getBucketName(), S3Utils.getCanonicalKey(getBaseDir(), resourceName)),
                     getTransferManager(),
                     destination);
         } catch (TransferFailedException | AuthorizationException | ResourceDoesNotExistException e) {
             throw e;
         } catch (Exception e) {
-            throw new TransferFailedException("Transfer of resource [" + S3Utils.getS3URI(getBucketName(), getKey(resourceName)) + "] to destination [" + destination.getAbsolutePath() + "] failed", e);
+            throw new TransferFailedException("Transfer of resource [" + S3Utils.getS3URI(getBucketName(), S3Utils.getKey(getBaseDir(), resourceName)) + "] to destination [" + destination.getAbsolutePath() + "] failed", e);
         }
     }
 
@@ -225,10 +235,6 @@ public class S3StreamWagon extends StreamWagon {
         }
     }
 
-    private String getKey(String resourceName) {
-        return getBaseDir() + resourceName;
-    }
-
     /**
      * List all of the objects in a given directory
      */
@@ -237,7 +243,7 @@ public class S3StreamWagon extends StreamWagon {
             directory = "";
         }
         String delimiter = "/";
-        String prefix = getKey(directory);
+        String prefix = S3Utils.getKey(getBaseDir(), directory);
         if (!prefix.endsWith(delimiter)) {
             prefix += delimiter;
         }
@@ -268,30 +274,6 @@ public class S3StreamWagon extends StreamWagon {
     }
 
     /**
-     * Normalize the key to our S3 object:<br>
-     * Convert <code>./css/style.css</code> into <code>/css/style.css</code><br>
-     * Convert <code>/foo/bar/../../css/style.css</code> into <code>/css/style.css</code><br>
-     *
-     * @param key S3 Key string.
-     * @return Normalized version of {@code key}.
-     */
-    private String getCanonicalKey(String key) {
-        // release/./css/style.css
-        String path = getKey(key);
-
-        // /temp/release/css/style.css
-        File file = S3Utils.getCanonicalFile(new File(TEMP_DIR, path));
-        String canonical = file.getAbsolutePath();
-
-        // release/css/style.css
-        int pos = TEMP_DIR_PATH.length() + 1;
-        String suffix = canonical.substring(pos);
-
-        // Always replace backslash with forward slash just in case we are running on Windows
-        return suffix.replace("\\", "/");
-    }
-
-    /**
      * Create a PutObjectRequest based on the source file and destination passed in.
      *
      * @param source      Local file to upload.
@@ -299,7 +281,7 @@ public class S3StreamWagon extends StreamWagon {
      * @return {@link PutObjectRequest} instance.
      */
     private PutObjectRequest createPutObjectRequest(File source, String destination) {
-        String key = getCanonicalKey(destination);
+        String key = S3Utils.getCanonicalKey(getBaseDir(), destination);
         return new PutObjectRequest(getBucketName(), key, source);
     }
 
@@ -328,15 +310,15 @@ public class S3StreamWagon extends StreamWagon {
             if (authenticationInfo == null
                     || StringUtils.isBlank(authenticationInfo.getPassword())
                     || StringUtils.isBlank(authenticationInfo.getUserName())) {
-                throw new IllegalStateException("The S3 wagon needs AWS Access Key set as the username and AWS Secret Key set as the password. eg:\n" +
+                throw new IllegalStateException("The S3 wagon needs an Access Key set as the username and Secret Key set as the password. eg:\n" +
                         "<server>\n" +
                         "  <id>my.server</id>\n" +
-                        "  <username>[AWS Access Key ID]</username>\n" +
-                        "  <password>[AWS Secret Access Key]</password>\n" +
+                        "  <username>[Access Key ID]</username>\n" +
+                        "  <password>[Secret Access Key]</password>\n" +
                         "</server>\n");
             }
 
-            this.client = getS3Client(authenticationInfo);
+
             String multipartCopyPartSize = source.getParameter("multipartCopyPartSize");
 
             // reduce default copy part size to increase friendliness to cloudflare and nginx
@@ -347,7 +329,7 @@ public class S3StreamWagon extends StreamWagon {
             setTransferManager(TransferManagerBuilder
                     .standard()
                     .withMultipartCopyPartSize(multipartCopyPartSize1)
-                    .withS3Client(this.client)
+                    .withS3Client(getS3Client(authenticationInfo))
                     .build());
 
             setBucketName(source.getHost());
