@@ -17,6 +17,7 @@ package org.kuali.common.aws.s3;
 
 import com.amazonaws.AmazonClientException;
 import com.amazonaws.event.ProgressEvent;
+import com.amazonaws.event.ProgressListener;
 import com.amazonaws.services.s3.model.AmazonS3Exception;
 import com.amazonaws.services.s3.model.GetObjectRequest;
 import com.amazonaws.services.s3.model.PutObjectRequest;
@@ -51,18 +52,9 @@ public class S3Utils {
             throws WagonException {
 
         try {
-            Download downloadRequest = manager.download(request, destFile, new S3ProgressListener() {
-                @Override
-                public void onPersistableTransfer(PersistableTransfer persistableTransfer) {
-
-                }
-
-                @Override
-                public void progressChanged(ProgressEvent progressEvent) {
-                    log.info(progressEvent.toString());
-                }
-            });
-            downloadRequest.waitForCompletion();
+            manager
+                    .download(request, destFile)
+                    .waitForCompletion();
         } catch (AmazonClientException | InterruptedException ex) {
             String resourceURI = getS3URI(request.getBucketName(), request.getKey());
             if (ex instanceof AmazonS3Exception) {
@@ -76,19 +68,10 @@ public class S3Utils {
 
     public static void upload(PutObjectRequest request, TransferManager manager) throws TransferFailedException {
 
-        Upload uploadRequest = manager.upload(request, new S3ProgressListener() {
-            @Override
-            public void onPersistableTransfer(PersistableTransfer persistableTransfer) {
-
-            }
-
-            @Override
-            public void progressChanged(ProgressEvent progressEvent) {
-                log.info(progressEvent.toString());
-            }
-        });
         try {
-            uploadRequest.waitForCompletion();
+            manager
+                    .upload(request)
+                    .waitForCompletion();
         } catch (Exception e) {
             throw new TransferFailedException("Unexpected error uploading file", e);
         }

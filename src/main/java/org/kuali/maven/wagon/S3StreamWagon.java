@@ -31,25 +31,30 @@ import com.amazonaws.services.s3.model.S3ObjectSummary;
 import com.amazonaws.services.s3.transfer.TransferManager;
 import com.amazonaws.services.s3.transfer.TransferManagerBuilder;
 import org.apache.commons.io.FileUtils;
+import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang.StringUtils;
 import org.apache.maven.wagon.ConnectionException;
+import org.apache.maven.wagon.InputData;
+import org.apache.maven.wagon.OutputData;
 import org.apache.maven.wagon.ResourceDoesNotExistException;
+import org.apache.maven.wagon.StreamWagon;
 import org.apache.maven.wagon.TransferFailedException;
-import org.apache.maven.wagon.Wagon;
 import org.apache.maven.wagon.authentication.AuthenticationException;
 import org.apache.maven.wagon.authentication.AuthenticationInfo;
 import org.apache.maven.wagon.authorization.AuthorizationException;
-import org.apache.maven.wagon.events.SessionListener;
-import org.apache.maven.wagon.events.TransferListener;
 import org.apache.maven.wagon.proxy.ProxyInfo;
-import org.apache.maven.wagon.proxy.ProxyInfoProvider;
 import org.apache.maven.wagon.repository.Repository;
 import org.kuali.common.aws.s3.S3Utils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
@@ -71,7 +76,7 @@ import java.util.List;
  * @author Ben Hale
  * @author Jeff Caddel
  */
-public class S3Wagon implements Wagon {
+public class S3StreamWagon extends StreamWagon {
 
     private static final int DEFAULT_READ_TIMEOUT = 60 * 1000;
     private static final File TEMP_DIR = S3Utils.getCanonicalFile(System.getProperty("java.io.tmpdir"));
@@ -81,7 +86,7 @@ public class S3Wagon implements Wagon {
 
     private TransferManager transferManager;
 
-    private static final Logger log = LoggerFactory.getLogger(S3Wagon.class);
+    private static final Logger log = LoggerFactory.getLogger(S3StreamWagon.class);
 
     private AmazonS3Client client;
 
@@ -90,10 +95,6 @@ public class S3Wagon implements Wagon {
     private String endpoint = null;
 
     private int timeout;
-
-    private boolean interactive;
-
-    private Repository repository;
 
     AmazonS3Client getAmazonS3Client(final AuthenticationInfo credentials) {
         AmazonS3ClientBuilder builder = AmazonS3ClientBuilder
@@ -118,70 +119,76 @@ public class S3Wagon implements Wagon {
     }
 
     @Override
-    public final Repository getRepository() {
-        return repository;
-    }
-
-    @Override
-    public final boolean isInteractive() {
-        return interactive;
-    }
-
-    @Override
-    public final void setInteractive(final boolean interactive) {
-        this.interactive = interactive;
-    }
-
-    @Override
-    public final void disconnect() throws ConnectionException {
+    public void fillInputData(InputData inputData) throws TransferFailedException, ResourceDoesNotExistException, AuthorizationException {
+        File tmp = null;
         try {
-            if (getTransferManager() != null) {
-                getTransferManager().shutdownNow();
-            }
-        } catch (Exception e) {
-            throw new ConnectionException("Could not disconnect from repository", e);
+            tmp = File.createTempFile("download.s3", "tmp");
+            doGet(inputData.getResource().getName(), tmp);
+            inputData.setInputStream(IOUtils.toBufferedInputStream(new FileInputStream(tmp)));
+        } catch (IOException e) {
+            throw new TransferFailedException("failed to create tmpfile", e);
+        } finally {
+            FileUtils.deleteQuietly(tmp);
         }
+
     }
 
     @Override
-    public final void get(final String resourceName, final File destination) throws TransferFailedException, ResourceDoesNotExistException, AuthorizationException {
+    public void fillOutputData(OutputData outputData) throws TransferFailedException {
+        outputData.setOutputStream(new OutputStream() {
+            private File tmpFile = null;
+            private OutputStream os = null;
+
+            @Override
+            public void write(int b) throws IOException {
+                if (tmpFile == null) {
+                    tmpFile = File.createTempFile("upload.s3", ".tmp");
+                    os = new FileOutputStream(tmpFile);
+                }
+                os.write(b);
+            }
+
+            @Override
+            public void close() throws IOException {
+                try {
+                    super.close();
+                    if (os != null) {
+                        os.flush();
+                        os.close();
+                        os = null;
+                        doPut(tmpFile, outputData.getResource().getName());
+                    }
+                } catch (TransferFailedException | ResourceDoesNotExistException | AuthorizationException e) {
+                    throw new IOException(e);
+                } finally {
+                    FileUtils.deleteQuietly(tmpFile);
+                }
+            }
+        });
+    }
+
+    @Override
+    public void closeConnection() throws ConnectionException {
+        log.info("closing connection");
+    }
+
+    private void doGet(final String resourceName, final File destination) throws TransferFailedException, ResourceDoesNotExistException, AuthorizationException {
         if (destination == null) {
             throw new TransferFailedException("destination cannot be null");
         }
-        File temporaryDestination = null;
         try {
-            temporaryDestination = createTmpFile(destination);
+            if (destination.exists() && !FileUtils.deleteQuietly(destination)) {
+                throw new TransferFailedException("cannot overwrite existing destination [" + destination.getAbsolutePath() + "]");
+            }
             S3Utils.download(new GetObjectRequest(getBucketName(), getKey(resourceName)),
                     getTransferManager(),
-                    temporaryDestination);
-            try {
-                if (destination.exists() && !FileUtils.deleteQuietly(destination)) {
-                    throw new TransferFailedException("cannot overwrite existing destination [" + destination.getAbsolutePath() + "]");
-                }
-                // then move, to have an atomic operation to guarantee we don't have a partially downloaded file on disk
-                FileUtils.moveFile(temporaryDestination, destination);
-            } catch (IOException ex) {
-                throw new TransferFailedException("failed to get [" + S3Utils.getS3URI(getBucketName(), getKey(resourceName)) + "]", ex);
-            }
+                    destination);
         } catch (TransferFailedException | AuthorizationException | ResourceDoesNotExistException e) {
             throw e;
         } catch (Exception e) {
             throw new TransferFailedException("Transfer of resource [" + S3Utils.getS3URI(getBucketName(), getKey(resourceName)) + "] to destination [" + destination.getAbsolutePath() + "] failed", e);
-        } finally {
-            FileUtils.deleteQuietly(temporaryDestination);
         }
     }
-
-    public final List<String> getFileList(final String destinationDirectory) throws TransferFailedException, ResourceDoesNotExistException, AuthorizationException {
-        try {
-            return listDirectory(destinationDirectory);
-        } catch (TransferFailedException | ResourceDoesNotExistException | AuthorizationException e) {
-            throw e;
-        } catch (Exception e) {
-            throw new TransferFailedException("Listing of directory " + destinationDirectory + "failed", e);
-        }
-    }
-
 
     private long parseMultipartCopyPartSize(String multipartCopyPartSize) {
         try {
@@ -198,6 +205,19 @@ public class S3Wagon implements Wagon {
         }
     }
 
+    @Override
+    public final List<String> getFileList(final String destinationDirectory) throws TransferFailedException, ResourceDoesNotExistException, AuthorizationException {
+        try {
+            return listDirectory(destinationDirectory);
+        } catch (TransferFailedException | ResourceDoesNotExistException | AuthorizationException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new TransferFailedException("Listing of directory " + destinationDirectory + "failed", e);
+        }
+    }
+
+
+
     private boolean doesRemoteResourceExist(final String resourceName) {
         try {
             client.getObjectMetadata(getBucketName(), getBaseDir() + resourceName);
@@ -205,14 +225,6 @@ public class S3Wagon implements Wagon {
             return false;
         }
         return true;
-    }
-
-    private File createTmpFile(File destination) throws TransferFailedException {
-        try {
-            return File.createTempFile(destination.getName(), ".tmp", destination.getParentFile());
-        } catch (IOException e) {
-            throw new TransferFailedException("cannot create temporary file for download", e);
-        }
     }
 
     /**
@@ -290,41 +302,15 @@ public class S3Wagon implements Wagon {
     }
 
     /**
-     * Create a PutObjectRequest based on the PutContext
-     */
-    public PutObjectRequest createPutObjectRequest(PutFileContext context) {
-        File source = context.getSource();
-        String destination = context.getDestination();
-        return createPutObjectRequest(source, destination);
-    }
-
-    /**
      * Create a PutObjectRequest based on the source file and destination passed in.
      *
      * @param source      Local file to upload.
      * @param destination Destination S3 key.
      * @return {@link PutObjectRequest} instance.
      */
-    PutObjectRequest createPutObjectRequest(File source, String destination) {
+    private PutObjectRequest createPutObjectRequest(File source, String destination) {
         String key = getCanonicalKey(destination);
         return new PutObjectRequest(getBucketName(), key, source);
-    }
-
-    /**
-     * On S3 there are no true "directories". An S3 bucket is essentially a Hashtable of files stored by key. The integration between a traditional file system and an S3 bucket is
-     * to use the path of the file on the local file system as the key to the file in the bucket. The S3 bucket does not contain a separate key for the directory itself.
-     */
-    public final void putDirectory(File sourceDir, String destinationDir) throws TransferFailedException {
-        List<PutFileContext> contexts = S3Utils.createPutFileContexts(sourceDir, destinationDir);
-        for (PutFileContext context : contexts) {
-            PutObjectRequest request = createPutObjectRequest(context);
-            S3Utils.upload(request, getTransferManager());
-        }
-    }
-
-    @Override
-    public boolean supportsDirectoryCopy() {
-        return true;
     }
 
     private String getBaseDir() {
@@ -335,35 +321,14 @@ public class S3Wagon implements Wagon {
         return readTimeout;
     }
 
-    @Override
-    public boolean hasTransferListener(TransferListener listener) {
-        return false;
-    }
-
-    public void connect(final Repository source, final AuthenticationInfo authenticationInfo, final ProxyInfoProvider proxyInfoProvider) throws ConnectionException,
-            AuthenticationException {
-        doConnect(source, authenticationInfo, null);
-    }
 
     @Override
-    public void connect(final Repository source, final ProxyInfoProvider proxyInfoProvider) throws ConnectionException, AuthenticationException {
-        doConnect(source, null, null);
+    protected void openConnectionInternal() throws ConnectionException, AuthenticationException {
+        if (transferManager == null) {
+            doConnect(repository, getAuthenticationInfo(), getProxyInfo());
+        }
     }
 
-    @Override
-    public final void connect(final Repository source) throws ConnectionException, AuthenticationException {
-        doConnect(source, null, null);
-    }
-
-    @Override
-    public final void connect(final Repository source, final ProxyInfo proxyInfo) throws ConnectionException, AuthenticationException {
-        connect(source, null, proxyInfo);
-    }
-
-    @Override
-    public final void connect(final Repository source, final AuthenticationInfo authenticationInfo) throws ConnectionException, AuthenticationException {
-        doConnect(source, authenticationInfo, null);
-    }
 
     private void doConnect(final Repository source, final AuthenticationInfo authenticationInfo, final ProxyInfo proxyInfo) throws ConnectionException {
         repository = source;
@@ -401,48 +366,11 @@ public class S3Wagon implements Wagon {
         }
     }
 
-    @Override
-    public final void connect(final Repository source, final AuthenticationInfo authenticationInfo, final ProxyInfo proxyInfo) throws ConnectionException, AuthenticationException {
-        doConnect(source, authenticationInfo, proxyInfo);
-    }
 
-    @Override
-    public final boolean getIfNewer(final String resourceName, final File destination, final long timestamp) throws TransferFailedException, ResourceDoesNotExistException,
-            AuthorizationException {
-        try {
-            if (isRemoteResourceNewer(resourceName, timestamp)) {
-                get(resourceName, destination);
-                return true;
-            } else {
-                return false;
-            }
-        } catch (TransferFailedException | ResourceDoesNotExistException | AuthorizationException e) {
-            throw e;
-        } catch (Exception e) {
-            throw new TransferFailedException("Transfer of resource " + destination + "failed", e);
-        }
-    }
-
-    @Deprecated
-    public final void openConnection() throws ConnectionException, AuthenticationException {
-        // Nothing to do here (never called by the wagon manager)
-    }
-
-    @Override
-    public final void put(final File source, final String destination) throws TransferFailedException, ResourceDoesNotExistException, AuthorizationException {
+    private void doPut(final File source, final String destination) throws TransferFailedException, ResourceDoesNotExistException, AuthorizationException {
         PutObjectRequest request = createPutObjectRequest(source, destination);
         S3Utils.upload(request, getTransferManager());
     }
-
-    @Override
-    public final boolean resourceExists(final String resourceName) throws TransferFailedException, AuthorizationException {
-        try {
-            return doesRemoteResourceExist(resourceName);
-        } catch (Exception e) {
-            throw new TransferFailedException("Listing of resource " + resourceName + "failed", e);
-        }
-    }
-
 
     @Override
     public int getTimeout() {
@@ -452,31 +380,6 @@ public class S3Wagon implements Wagon {
     @Override
     public void setTimeout(final int timeoutValue) {
         this.timeout = timeoutValue;
-    }
-
-    @Override
-    public void addSessionListener(SessionListener listener) {
-
-    }
-
-    @Override
-    public void removeSessionListener(SessionListener listener) {
-
-    }
-
-    @Override
-    public boolean hasSessionListener(SessionListener listener) {
-        return false;
-    }
-
-    @Override
-    public void addTransferListener(TransferListener listener) {
-
-    }
-
-    @Override
-    public void removeTransferListener(TransferListener listener) {
-
     }
 
 
@@ -496,11 +399,11 @@ public class S3Wagon implements Wagon {
         return bucketName;
     }
 
-    void setBucketName(String bucketName) {
+    private void setBucketName(String bucketName) {
         this.bucketName = bucketName;
     }
 
-    void setBaseDir(String baseDir) {
+    private void setBaseDir(String baseDir) {
         this.baseDir = baseDir;
     }
 
@@ -508,7 +411,7 @@ public class S3Wagon implements Wagon {
         return endpoint;
     }
 
-    void setEndpoint(String endpoint) {
+    public void setEndpoint(String endpoint) {
         this.endpoint = endpoint;
     }
 

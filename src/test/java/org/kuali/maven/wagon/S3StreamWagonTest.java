@@ -28,11 +28,8 @@ import org.apache.maven.wagon.authentication.AuthenticationException;
 import org.apache.maven.wagon.authentication.AuthenticationInfo;
 import org.apache.maven.wagon.authorization.AuthorizationException;
 import org.apache.maven.wagon.repository.Repository;
-import org.junit.After;
 import org.junit.AfterClass;
-import org.junit.Before;
 import org.junit.BeforeClass;
-import org.junit.Ignore;
 import org.junit.Test;
 
 import java.io.File;
@@ -44,12 +41,11 @@ import java.util.Properties;
 import java.util.UUID;
 
 import static org.hamcrest.CoreMatchers.hasItem;
-import static org.hamcrest.CoreMatchers.hasItems;
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.Assert.fail;
 
-public class S3WagonTest {
+public class S3StreamWagonTest {
 
     private static final String testBucketName = "maven-s3-wagon-test-" + UUID.randomUUID();
 
@@ -59,8 +55,8 @@ public class S3WagonTest {
     }
 
     private static AmazonS3Client getClient() {
-        return getS3WagonForMinioTestEndpoint()
-                .getAmazonS3Client(getMinioTestAuth());
+        return ((S3StreamWagon) getS3WagonForMinioTestEndpoint()
+        ).getAmazonS3Client(getMinioTestAuth());
     }
 
     @AfterClass
@@ -78,7 +74,7 @@ public class S3WagonTest {
     public void customEndpoint() throws ConnectionException, AuthenticationException {
         AuthenticationInfo auth = getMinioTestAuth();
         Repository repository = getTestRepo();
-        S3Wagon wagon = getS3WagonForMinioTestEndpoint();
+        Wagon wagon = getS3WagonForMinioTestEndpoint();
         wagon.connect(repository, auth);
     }
 
@@ -87,7 +83,7 @@ public class S3WagonTest {
     public void nonExistent() throws ConnectionException, AuthenticationException, IOException, AuthorizationException, ResourceDoesNotExistException, TransferFailedException {
         AuthenticationInfo auth = getMinioTestAuth();
         Repository repository = getTestRepo();
-        S3Wagon wagon = getS3WagonForMinioTestEndpoint();
+        Wagon wagon = getS3WagonForMinioTestEndpoint();
         wagon.connect(repository, auth);
 
         File tempFile = null;
@@ -104,8 +100,8 @@ public class S3WagonTest {
         return new Repository("minio.play", "s3://" + testBucketName + "/");
     }
 
-    private static S3Wagon getS3WagonForMinioTestEndpoint() {
-        S3Wagon wagon = new S3Wagon();
+    private static Wagon getS3WagonForMinioTestEndpoint() {
+        S3StreamWagon wagon = new S3StreamWagon();
         wagon.setEndpoint("play.min.io");
         return wagon;
     }
@@ -116,8 +112,7 @@ public class S3WagonTest {
         Repository repository = getTestRepo();
         Properties parameters = new Properties();
         repository.setParameters(parameters);
-        S3Wagon wagon = new S3Wagon();
-        wagon.setEndpoint("play.min.io");
+        Wagon wagon = getS3WagonForMinioTestEndpoint();
         wagon.connect(repository, auth);
         URL resource = getClass().getResource("/empty.properties");
         UUID uploadFilename = UUID.randomUUID();
