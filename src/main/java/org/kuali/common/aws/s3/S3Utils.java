@@ -16,27 +16,20 @@
 package org.kuali.common.aws.s3;
 
 import com.amazonaws.AmazonClientException;
-import com.amazonaws.AmazonServiceException;
 import com.amazonaws.event.ProgressEvent;
-import com.amazonaws.event.ProgressEventType;
-import com.amazonaws.event.ProgressListener;
 import com.amazonaws.services.s3.model.AmazonS3Exception;
 import com.amazonaws.services.s3.model.GetObjectRequest;
-import com.amazonaws.services.s3.model.ObjectMetadata;
 import com.amazonaws.services.s3.model.PutObjectRequest;
 import com.amazonaws.services.s3.transfer.Download;
 import com.amazonaws.services.s3.transfer.PersistableTransfer;
 import com.amazonaws.services.s3.transfer.TransferManager;
 import com.amazonaws.services.s3.transfer.Upload;
 import com.amazonaws.services.s3.transfer.internal.S3ProgressListener;
-import com.amazonaws.util.StringUtils;
 import org.apache.maven.wagon.ResourceDoesNotExistException;
 import org.apache.maven.wagon.TransferFailedException;
 import org.apache.maven.wagon.WagonException;
 import org.apache.maven.wagon.repository.Repository;
-import org.apache.maven.wagon.resource.Resource;
 import org.kuali.maven.wagon.PutFileContext;
-import org.kuali.maven.wagon.S3Wagon;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -66,14 +59,14 @@ public class S3Utils {
 
                 @Override
                 public void progressChanged(ProgressEvent progressEvent) {
-
+                    log.info(progressEvent.toString());
                 }
             });
             downloadRequest.waitForCompletion();
         } catch (AmazonClientException | InterruptedException ex) {
             String resourceURI = getS3URI(request.getBucketName(), request.getKey());
             if (ex instanceof AmazonS3Exception) {
-                if (404 == ((AmazonS3Exception)ex).getStatusCode()) {
+                if (404 == ((AmazonS3Exception) ex).getStatusCode()) {
                     throw new ResourceDoesNotExistException("requested non-existing resource [" + resourceURI + "]", ex);
                 }
             }
@@ -91,7 +84,7 @@ public class S3Utils {
 
             @Override
             public void progressChanged(ProgressEvent progressEvent) {
-
+                log.info(progressEvent.toString());
             }
         });
         try {
@@ -125,7 +118,7 @@ public class S3Utils {
         return sb.toString();
     }
 
-    public static PutFileContext getPutFileContext(File source, String destination) {
+    private static PutFileContext getPutFileContext(File source, String destination) {
         PutFileContext context = new PutFileContext();
         context.setDestination(destination);
         context.setSource(source);

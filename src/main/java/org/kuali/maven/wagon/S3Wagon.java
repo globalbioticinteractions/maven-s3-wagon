@@ -145,11 +145,19 @@ public class S3Wagon implements Wagon {
 
     @Override
     public final void get(final String resourceName, final File destination) throws TransferFailedException, ResourceDoesNotExistException, AuthorizationException {
+        if (destination == null) {
+            throw new TransferFailedException("destination cannot be null");
+        }
+        File temporaryDestination = null;
         try {
-            File temporaryDestination = createTmpFile(destination);
+            temporaryDestination = createTmpFile(destination);
             S3Utils.download(new GetObjectRequest(getBucketName(), getKey(resourceName)),
-                    getTransferManager(), temporaryDestination);
+                    getTransferManager(),
+                    temporaryDestination);
             try {
+                if (destination.exists() && !FileUtils.deleteQuietly(destination)) {
+                    throw new TransferFailedException("cannot overwrite existing destination [" + destination.getAbsolutePath() + "]");
+                }
                 // then move, to have an atomic operation to guarantee we don't have a partially downloaded file on disk
                 FileUtils.moveFile(temporaryDestination, destination);
             } catch (IOException ex) {
@@ -158,7 +166,9 @@ public class S3Wagon implements Wagon {
         } catch (TransferFailedException | AuthorizationException | ResourceDoesNotExistException e) {
             throw e;
         } catch (Exception e) {
-            throw new TransferFailedException("Transfer of resource " + destination + "failed", e);
+            throw new TransferFailedException("Transfer of resource [" + S3Utils.getS3URI(getBucketName(), getKey(resourceName)) + "] to destination [" + destination.getAbsolutePath() + "] failed", e);
+        } finally {
+            FileUtils.deleteQuietly(temporaryDestination);
         }
     }
 

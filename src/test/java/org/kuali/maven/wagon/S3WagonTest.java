@@ -18,6 +18,7 @@ package org.kuali.maven.wagon;
 import com.amazonaws.services.s3.AmazonS3Client;
 import com.amazonaws.services.s3.model.ObjectListing;
 import com.amazonaws.services.s3.model.S3ObjectSummary;
+import org.apache.commons.io.FileUtils;
 import org.apache.maven.wagon.ConnectionException;
 import org.apache.maven.wagon.ResourceDoesNotExistException;
 import org.apache.maven.wagon.TransferFailedException;
@@ -27,7 +28,6 @@ import org.apache.maven.wagon.authentication.AuthenticationException;
 import org.apache.maven.wagon.authentication.AuthenticationInfo;
 import org.apache.maven.wagon.authorization.AuthorizationException;
 import org.apache.maven.wagon.repository.Repository;
-import org.codehaus.plexus.util.FileUtils;
 import org.junit.After;
 import org.junit.AfterClass;
 import org.junit.Before;
@@ -36,6 +36,7 @@ import org.junit.Ignore;
 import org.junit.Test;
 
 import java.io.File;
+import java.io.IOException;
 import java.net.URISyntaxException;
 import java.net.URL;
 import java.util.List;
@@ -79,6 +80,24 @@ public class S3WagonTest {
         Repository repository = getTestRepo();
         S3Wagon wagon = getS3WagonForMinioTestEndpoint();
         wagon.connect(repository, auth);
+    }
+
+
+    @Test(expected = ResourceDoesNotExistException.class)
+    public void nonExistent() throws ConnectionException, AuthenticationException, IOException, AuthorizationException, ResourceDoesNotExistException, TransferFailedException {
+        AuthenticationInfo auth = getMinioTestAuth();
+        Repository repository = getTestRepo();
+        S3Wagon wagon = getS3WagonForMinioTestEndpoint();
+        wagon.connect(repository, auth);
+
+        File tempFile = null;
+        try {
+            tempFile = File.createTempFile("bla", "target", new File("target"));
+            wagon.get(UUID.randomUUID().toString(), tempFile);
+        } finally {
+            FileUtils.deleteQuietly(tempFile);
+        }
+
     }
 
     private Repository getTestRepo() {
