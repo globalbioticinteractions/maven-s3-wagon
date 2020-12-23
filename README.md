@@ -1,6 +1,4 @@
-[![Build Status](https://travis-ci.com/globalbioticinteractions/maven-s3-wagon.svg?branch=master)](https://travis-ci.com/globalbioticinteractions/maven-s3-wagon)
-
-This plugin is under development and has not yet been released. 
+[![Build Status](https://travis-ci.com/globalbioticinteractions/maven-s3-wagon.svg?branch=master)](https://travis-ci.com/globalbioticinteractions/maven-s3-wagon) ![Maven Central](https://img.shields.io/maven-central/v/org.globalbioticinteractions/maven-s3-wagon)
 
 # Maven S3 Wagon
 
@@ -84,10 +82,7 @@ And setup one of the supported authentication techniques (see below)
 If things are setup correctly, `$ mvn deploy` will produce output similar to this:
 
     [INFO] --- maven-deploy-plugin:2.7:deploy (default-deploy) @ kuali-example ---
-    [INFO] Logged in - maven.kuali.org
     Uploading: s3://maven.kuali.org/release/org/kuali/common/kuali-example/1.0.0/kuali-example-1.0.0.jar
-    [INFO] Logged off - maven.kuali.org
-    [INFO] Transfers: 1 Time: 2.921s Amount: 7.6M Throughput: 2.6 MB/s
     [INFO] ------------------------------------------------------------------------
     [INFO] BUILD SUCCESS
     [INFO] ------------------------------------------------------------------------
