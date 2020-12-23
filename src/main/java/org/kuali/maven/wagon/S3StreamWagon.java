@@ -137,9 +137,8 @@ public class S3StreamWagon extends StreamWagon {
             TransferFailedException, ResourceDoesNotExistException, AuthorizationException {
         File tmpFile = null;
         try {
-            tmpFile = File.createTempFile("maven.wagon.s3.download", "tmp");
             log.debug("staging download using tmp file at [" + tmpFile.getAbsolutePath() + "]");
-
+            tmpFile = createTmpFile("download");
             doGet(inputData.getResource().getName(), tmpFile);
             inputData.setInputStream(IOUtils.toBufferedInputStream(new FileInputStream(tmpFile)));
         } catch (IOException e) {
@@ -148,6 +147,12 @@ public class S3StreamWagon extends StreamWagon {
             FileUtils.deleteQuietly(tmpFile);
         }
 
+    }
+
+    private static File createTmpFile(String verb) throws IOException {
+        File tmpFile = File.createTempFile("maven.wagon.s3." + verb, "tmp");
+        tmpFile.deleteOnExit();
+        return tmpFile;
     }
 
     @Override
@@ -159,7 +164,7 @@ public class S3StreamWagon extends StreamWagon {
             @Override
             public void write(int b) throws IOException {
                 if (tmpFile == null) {
-                    tmpFile = File.createTempFile("maven.wagon.s3.upload", ".tmp");
+                    tmpFile = createTmpFile("upload");
                     log.debug("staging upload using tmp file at [" + tmpFile.getAbsolutePath() + "]");
                     os = new FileOutputStream(tmpFile);
                 }
