@@ -25,10 +25,7 @@
     <name>Maven S3 Wagon</name>
     <inceptionYear>2010</inceptionYear>
     <description>
-        This project is an implementation of a Wagon provider for accessing Amazon's Simple Storage
-        Service (S3).
-        It enables Maven to download files from and deploy files to services supporting a S3 api.
-        It draws heavily from code developed by Sean Hennessy, Jeff Caddel at Kuali and Ben Hale at SpringSource
+        This project is an implementation of a Wagon provider to enable Maven to download files from, and deploy files to, services supporting a Simple Storage Service (S3) api like Amazon's S3 and https://min.io . This Maven Wagon provider draws heavily from code developed by Sean Hennessy, Jeff Caddel at Kuali and Ben Hale at SpringSource.
     </description>
     <url>https://github.com/globalbioticinteractions/maven-s3-wagon</url>
     <properties>
