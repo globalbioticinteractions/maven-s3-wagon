@@ -19,6 +19,8 @@ import com.amazonaws.services.s3.AmazonS3Client;
 import com.amazonaws.services.s3.model.ObjectListing;
 import com.amazonaws.services.s3.model.S3ObjectSummary;
 import org.apache.commons.io.FileUtils;
+import org.apache.commons.io.IOUtils;
+import org.apache.commons.lang.StringUtils;
 import org.apache.maven.wagon.ConnectionException;
 import org.apache.maven.wagon.ResourceDoesNotExistException;
 import org.apache.maven.wagon.TransferFailedException;
@@ -36,6 +38,7 @@ import java.io.File;
 import java.io.IOException;
 import java.net.URISyntaxException;
 import java.net.URL;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Properties;
 import java.util.UUID;
@@ -107,7 +110,7 @@ public class S3StreamWagonTest {
     }
 
     @Test
-    public void putGetList() throws WagonException, URISyntaxException {
+    public void putGetList() throws WagonException, URISyntaxException, IOException {
         AuthenticationInfo auth = getMinioTestAuth();
         Repository repository = getTestRepo();
         Properties parameters = new Properties();
@@ -133,8 +136,8 @@ public class S3StreamWagonTest {
         wagon.get(uploadPath, new File(localDownloadPath));
         assertThat(destination.exists(), is(true));
 
-        List<String> fileList = wagon.getFileList("/integration-test");
-        assertThat(fileList, hasItem(uploadPath));
+        assertThat(FileUtils.readFileToString(destination, StandardCharsets.UTF_8),
+                is(IOUtils.toString(resource, StandardCharsets.UTF_8)));
 
     }
 

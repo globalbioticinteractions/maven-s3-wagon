@@ -421,6 +421,7 @@ public class S3StreamWagon extends StreamWagon {
                     os.close();
                     os = null;
                     doPut(tmpFile, outputData.getResource().getName());
+                    log.debug("uploaded [" + tmpFile.getAbsolutePath() + "] to [" + outputData.getResource().getName() + "]");
                 }
             } catch (TransferFailedException | ResourceDoesNotExistException | AuthorizationException e) {
                 throw new IOException(e);
