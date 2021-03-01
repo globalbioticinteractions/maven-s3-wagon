@@ -137,8 +137,8 @@ public class S3StreamWagon extends StreamWagon {
             TransferFailedException, ResourceDoesNotExistException, AuthorizationException {
         File tmpFile = null;
         try {
-            log.debug("staging download using tmp file at [" + tmpFile.getAbsolutePath() + "]");
             tmpFile = createTmpFile("download");
+            log.debug("staging download using tmp file at [" + tmpFile.getAbsolutePath() + "]");
             doGet(inputData.getResource().getName(), tmpFile);
             inputData.setInputStream(IOUtils.toBufferedInputStream(new FileInputStream(tmpFile)));
         } catch (IOException e) {
@@ -157,37 +157,7 @@ public class S3StreamWagon extends StreamWagon {
 
     @Override
     public void fillOutputData(OutputData outputData) throws TransferFailedException {
-        outputData.setOutputStream(new OutputStream() {
-            private File tmpFile = null;
-            private OutputStream os = null;
-
-            @Override
-            public void write(int b) throws IOException {
-                if (tmpFile == null) {
-                    tmpFile = createTmpFile("upload");
-                    log.debug("staging upload using tmp file at [" + tmpFile.getAbsolutePath() + "]");
-                    os = new FileOutputStream(tmpFile);
-                }
-                os.write(b);
-            }
-
-            @Override
-            public void close() throws IOException {
-                try {
-                    super.close();
-                    if (os != null) {
-                        os.flush();
-                        os.close();
-                        os = null;
-                        doPut(tmpFile, outputData.getResource().getName());
-                    }
-                } catch (TransferFailedException | ResourceDoesNotExistException | AuthorizationException e) {
-                    throw new IOException(e);
-                } finally {
-                    FileUtils.deleteQuietly(tmpFile);
-                }
-            }
-        });
+        outputData.setOutputStream(new StagingOutputStream(outputData));
     }
 
     @Override
@@ -397,4 +367,66 @@ public class S3StreamWagon extends StreamWagon {
     }
 
 
+    private class StagingOutputStream extends OutputStream {
+        private final OutputData outputData;
+        private File tmpFile;
+        private OutputStream os;
+
+        public StagingOutputStream(OutputData outputData) {
+            this.outputData = outputData;
+            tmpFile = null;
+            os = null;
+        }
+
+        @Override
+        public void write(int b) throws IOException {
+            getOutputStream().write(b);
+        }
+
+        private OutputStream getOutputStream() throws IOException {
+            if (tmpFile == null) {
+                tmpFile = createTmpFile("upload");
+                log.debug("staging upload using tmp file at [" + tmpFile.getAbsolutePath() + "]");
+                os = new FileOutputStream(tmpFile);
+            } else {
+                if (os == null) {
+                    throw new IOException("cannot re-use closed outputstream");
+                }
+            }
+            return os;
+        }
+
+        @Override
+        public void write(byte[] b, int off, int len) throws IOException {
+            getOutputStream().write(b, off, len);
+        }
+
+        @Override
+        public void write(byte[] b) throws IOException {
+            getOutputStream().write(b);
+        }
+
+        @Override
+        public void flush() throws IOException {
+            getOutputStream().flush();
+        }
+
+
+            @Override
+        public void close() throws IOException {
+            try {
+                super.close();
+                if (os != null) {
+                    os.flush();
+                    os.close();
+                    os = null;
+                    doPut(tmpFile, outputData.getResource().getName());
+                }
+            } catch (TransferFailedException | ResourceDoesNotExistException | AuthorizationException e) {
+                throw new IOException(e);
+            } finally {
+                FileUtils.deleteQuietly(tmpFile);
+            }
+        }
+    }
 }
